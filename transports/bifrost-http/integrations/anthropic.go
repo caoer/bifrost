@@ -89,6 +89,37 @@ func applyPerConversationCacheKey(ctx *schemas.BifrostContext, req *schemas.Bifr
 	req.Params.PromptCacheKey = &key
 }
 
+// relabelMidConversationSystemMessages turns every system-role input message
+// that follows the first non-system item into a developer message. Claude Code
+// sends role:"system" reminders inside `messages` on nearly every turn; a Codex
+// OAuth upstream (sub2api's transform) hoists the text of every system item into
+// the top-level `instructions`, so the prompt changes at its top each turn and
+// the OpenAI prompt cache stops at the fleet-common system+tools prefix
+// (measured on a 46k-token turn: 13,824 cached with the new system item, 45,952
+// with the same item as developer or user, three trials each). Leading system
+// messages are the conversation's instructions and stay system; developer keeps
+// the instruction semantics in place, which is also the role the Responses ->
+// Anthropic converter already reads back as a mid-conversation system message.
+func relabelMidConversationSystemMessages(req *schemas.BifrostResponsesRequest) {
+	if req == nil {
+		return
+	}
+	seenConversation := false
+	for i := range req.Input {
+		item := &req.Input[i]
+		isSystem := item.Role != nil && *item.Role == schemas.ResponsesInputMessageRoleSystem
+		if !seenConversation {
+			if !isSystem {
+				seenConversation = true
+			}
+			continue
+		}
+		if isSystem {
+			item.Role = schemas.Ptr(schemas.ResponsesInputMessageRoleDeveloper)
+		}
+	}
+}
+
 // createAnthropicMessagesRouteConfig creates a route configuration for the `/v1/messages` endpoint.
 func createAnthropicMessagesRouteConfig(pathPrefix string, logger schemas.Logger) []RouteConfig {
 	var routes []RouteConfig
@@ -110,6 +141,7 @@ func createAnthropicMessagesRouteConfig(pathPrefix string, logger schemas.Logger
 				if anthropicReq, ok := req.(*anthropic.AnthropicMessageRequest); ok {
 					bifrostReq := anthropicReq.ToBifrostResponsesRequest(ctx)
 					normalizeBifrostInputContentBlocks(bifrostReq)
+					relabelMidConversationSystemMessages(bifrostReq)
 					applyPerConversationCacheKey(ctx, bifrostReq)
 					return &schemas.BifrostRequest{
 						ResponsesRequest: bifrostReq,
