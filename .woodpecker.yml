@@ -1,49 +1,32 @@
-# Woodpecker CI (ci.0xdao.app) — build this fork's gateway from the flake and
-# push its closure to the fleet's public niks3 cache (cache.0xtau.com, R2 CDN),
-# so a NixOS host consuming `packages.x86_64-linux.bifrost-http` from this
-# repo substitutes instead of compiling Go 1.27 + Next.js on a 12 GiB guest.
+# Woodpecker CI (ci.0xdao.app) — test the fork on every dev push.
 #
-# Hash identity is the point: this builds exactly the derivation a consumer
-# of this flake evaluates at the same commit — same nixpkgs lock, same
-# vendorHash / npmDepsHash. Bump those in nix/packages/*.nix when go.sum or
-# ui/package-lock.json moves, or the build fails here first.
+# The closure build is NOT here on purpose: the reachable agent cannot finish
+# the Go 1.27 + Next.js build reliably (two silent step kills with empty logs,
+# 2026-09-03). Build and push the closure from workstation-nyc-2 instead:
 #
-# niks3_token is the fleet niks3 API control-plane token
-# (https://niks3.0xtau.com on forge-nyc-2). NAR bytes upload direct to R2 via
-# presigned URLs. Mirrors caoer115/osfiles-modules.
+#   cd ~/src/bifrost && git fetch https://git.0xdao.app/caoer115/bifrost dev \
+#     && git reset --hard FETCH_HEAD
+#   nix build '.#packages.x86_64-linux.bifrost-http' -L
+#   umask 077; printf '%s' "$NIKS3_TOKEN" > /tmp/niks3-token
+#   NIKS3_SERVER_URL=https://niks3.0xtau.com NIKS3_AUTH_TOKEN_FILE=/tmp/niks3-token \
+#     nix run github:Mic92/niks3/780939adecefc2f84be700a6f9ae1cc9385ad240#niks3 \
+#     -- push --pin bifrost-http-x86_64-linux ./result
+#
+# (NIKS3_TOKEN: osfiles secrets/hosts/forge-nyc-2.sops.yaml niks3_api_token.
+# Consumers substitute from https://cache.0xtau.com; do not follows nixpkgs.)
 when:
   - event: push
     branch: dev
   - event: manual
 
 steps:
-  - name: build-and-cache
-    image: nixos/nix:2.34.8
-    environment:
-      NIKS3_TOKEN:
-        from_secret: niks3_token
+  - name: go-test
+    image: golang:1.27-bookworm
     commands:
-      - |
-        cat >> /etc/nix/nix.conf <<EOF
-        experimental-features = nix-command flakes
-        accept-flake-config = true
-        extra-substituters = https://cache.0xtau.com
-        extra-trusted-public-keys = cache.0xtau.com-1:M4y9SWhqZED/M9nvrYvJuxAlEj0umdXnxRYMgoXZxfU=
-        EOF
-      - nix build '.#packages.x86_64-linux.bifrost-http' -L
-      - ./result/bin/bifrost-http --help 2>&1 | head -3 || true
-      - umask 077
-      - printf '%s' "$NIKS3_TOKEN" > /tmp/niks3-token
-      - export NIKS3_AUTH_TOKEN_FILE=/tmp/niks3-token
-      - export NIKS3_SERVER_URL=https://niks3.0xtau.com
-      # Pin niks3 to the rev osfiles locks (nixpkgs' niks3 lags --pin support).
-      - nix profile install github:Mic92/niks3/780939adecefc2f84be700a6f9ae1cc9385ad240#niks3
-      # --pin upserts one store path, shielding the closure from the server's
-      # 30-day GC even when dev goes quiet.
-      - niks3 push --pin "bifrost-http-x86_64-linux" ./result
-      # A successful push is not the same as a host being able to substitute.
-      # Read back exactly what a host reads.
-      - |
-        hash=$(basename "$(readlink -f ./result)" | cut -d- -f1)
-        echo "checking https://cache.0xtau.com/$hash.narinfo"
-        nix run nixpkgs#curl -- -fsS "https://cache.0xtau.com/$hash.narinfo" | head -3
+      # go.work is gitignored upstream; build it the way the repo expects.
+      - go work init ./core ./framework ./transports
+      - for d in plugins/*/; do [ -f "$d/go.mod" ] && go work use "$d"; done
+      # The two packages the fleet's own commits touch. The full tree has
+      # environmental failures (bifrost-http needs the built UI for
+      # //go:embed; core has resolver-dependent tests) — not CI signal.
+      - cd transports && go test ./bifrost-http/integrations/ ./bifrost-http/lib/ -count=1
