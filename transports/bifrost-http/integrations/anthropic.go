@@ -2,6 +2,7 @@ package integrations
 
 import (
 	"context"
+	"crypto/sha256"
 	"errors"
 	"fmt"
 	"io"
@@ -59,6 +60,35 @@ func createAnthropicCompleteRouteConfig(pathPrefix string) RouteConfig {
 	}
 }
 
+// applyPerConversationCacheKey routes the upstream prompt cache per conversation.
+// The Anthropic->Responses converter derives prompt_cache_key from
+// metadata.user_id alone, so every conversation of one client identity shares
+// one cache bucket; under concurrent seats that bucket thrashes and each
+// conversation keeps only the shared system+tools prefix (measured: 34% hit
+// rate, frozen at the common prefix, while the identical request body under a
+// per-conversation key reaches 99.5%). When a harness session id was resolved
+// (x-bf-session-id or the harness headers, forwarded as UpstreamSessionIDHeader),
+// it becomes the prompt cache key instead — hashed past 64 chars, matching the
+// converter's own rule. Without a session id the user_id-derived key stands.
+func applyPerConversationCacheKey(ctx *schemas.BifrostContext, req *schemas.BifrostResponsesRequest) {
+	if ctx == nil || req == nil || req.Params == nil {
+		return
+	}
+	headers, _ := ctx.Value(schemas.BifrostContextKeyExtraHeaders).(map[string][]string)
+	values := headers[lib.UpstreamSessionIDHeader]
+	if len(values) == 0 {
+		return
+	}
+	key := strings.TrimSpace(values[0])
+	if key == "" {
+		return
+	}
+	if len(key) > 64 {
+		key = fmt.Sprintf("%x", sha256.Sum256([]byte(key)))
+	}
+	req.Params.PromptCacheKey = &key
+}
+
 // createAnthropicMessagesRouteConfig creates a route configuration for the `/v1/messages` endpoint.
 func createAnthropicMessagesRouteConfig(pathPrefix string, logger schemas.Logger) []RouteConfig {
 	var routes []RouteConfig
@@ -80,6 +110,7 @@ func createAnthropicMessagesRouteConfig(pathPrefix string, logger schemas.Logger
 				if anthropicReq, ok := req.(*anthropic.AnthropicMessageRequest); ok {
 					bifrostReq := anthropicReq.ToBifrostResponsesRequest(ctx)
 					normalizeBifrostInputContentBlocks(bifrostReq)
+					applyPerConversationCacheKey(ctx, bifrostReq)
 					return &schemas.BifrostRequest{
 						ResponsesRequest: bifrostReq,
 					}, nil
