@@ -40,6 +40,14 @@ const (
 	FastHTTPUserValueModelCatalogResolution = "__bifrost_model_catalog_resolution"
 )
 
+// UpstreamSessionIDHeader is the request header Bifrost forwards the resolved
+// session id under. It is the name the Codex protocol uses, and the one
+// subscription-pool gateways read before falling back to minting a random
+// session of their own. Lower-cased and underscored to match how
+// ConvertToBifrostContext keys the extra-headers map; fasthttp normalizes it on
+// the wire, which lands on the same canonical form net/http readers expect.
+const UpstreamSessionIDHeader = "session_id"
+
 // ModelCatalogResolution carries the result of an automatic provider lookup so
 // that ConvertToBifrostContext can emit the routing engine log in one place.
 type ModelCatalogResolution struct {
@@ -226,6 +234,10 @@ func ResolveSessionIDFromRequest(h *fasthttp.RequestHeader) string {
 //     When absent, falls back to the coding-harness session headers listed in
 //     schemas.HarnessSessionHeaders (Claude Code, Codex CLI, OpenCode).
 //   - x-bf-session-ttl: Per-request TTL override (duration string e.g. "30m" or seconds integer)
+//   - The resolved session id is also forwarded upstream as a `session_id` request
+//     header (UpstreamSessionIDHeader), via the same extra-headers map as (7), so
+//     gateways that key a server-side conversation cache on it keep one identity
+//     for the whole conversation. An explicit x-bf-eh-session_id wins.
 //
 // 9. Raw Capture Headers (per-request override of provider config; accepts "true" or "false"):
 //   - x-bf-send-back-raw-request: include raw provider request in the BifrostResponse returned to the caller
@@ -754,6 +766,27 @@ func ConvertToBifrostContext(ctx *fasthttp.RequestCtx, store HandlerStore) (*sch
 	// session.id trace attribute in agreement.
 	if sessionID := ResolveSessionIDFromHeaders(allHeaders); sessionID != "" {
 		bifrostCtx.SetValue(schemas.BifrostContextKeySessionID, sessionID)
+
+		// Forward that same identity upstream as a `session_id` request header.
+		//
+		// Subscription-pool gateways speaking the Codex protocol key their
+		// server-side conversation cache on this header and mint a fresh random
+		// session per request when it is absent, so without it every turn of one
+		// conversation looks like a new conversation upstream and only a
+		// globally-hot prefix can be served back. Reusing the resolved harness
+		// session id keeps one upstream identity for the life of a Claude Code
+		// or Codex CLI conversation, which is what the caller already meant by
+		// sending its own session header.
+		//
+		// Riding BifrostContextKeyExtraHeaders instead of touching provider code
+		// keeps this to a single wiring point: every provider already applies
+		// that map to its outbound request through providerUtils.SetExtraHeaders.
+		// An explicit x-bf-eh-session_id from the caller wins, because that is a
+		// deliberate override of exactly this header.
+		if _, explicit := extraHeaders[UpstreamSessionIDHeader]; !explicit {
+			extraHeaders[UpstreamSessionIDHeader] = []string{sessionID}
+			bifrostCtx.SetValue(schemas.BifrostContextKeyExtraHeaders, extraHeaders)
+		}
 	}
 
 	// Collect all request query params for downstream use (e.g., governance routing CEL rules
