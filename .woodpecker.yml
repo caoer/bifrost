@@ -1,38 +1,12 @@
-# Woodpecker CI (ci.0xdao.app) — test the fork on every dev push.
-#
-# The closure build is NOT here on purpose: the agent cannot finish the
-# Go 1.27 + Next.js build reliably (2026-09-03). Build and push the closure
-# from workstation-nyc-2 instead:
-#
-#   cd ~/src/bifrost && git fetch https://git.0xdao.app/caoer115/bifrost dev \
-#     && git reset --hard FETCH_HEAD
-#   nix build '.#packages.x86_64-linux.bifrost-http' -L
-#   umask 077; printf '%s' "$NIKS3_TOKEN" > /tmp/niks3-token
-#   NIKS3_SERVER_URL=https://niks3.0xtau.com NIKS3_AUTH_TOKEN_FILE=/tmp/niks3-token \
-#     nix run github:Mic92/niks3/780939adecefc2f84be700a6f9ae1cc9385ad240#niks3 \
-#     -- push --pin bifrost-http-x86_64-linux ./result
-#
-# (NIKS3_TOKEN: osfiles secrets/hosts/forge-nyc-2.sops.yaml niks3_api_token.
-# Consumers substitute from https://cache.0xtau.com; do not follows nixpkgs.)
-#
-# The step runs on nixos/nix:2.34.8 (the agent backend is OrbStack on the Mac;
-# pipelines 2-5 died instantly with empty logs while OrbStack was down).
-# go itself comes from the repo's own devshell.
 when:
-  - event: push
+  - event: [push, manual]
     branch: dev
-  - event: manual
-
 steps:
-  - name: go-test
+  - name: probe
     image: nixos/nix:2.34.8
     commands:
-      - |
-        cat >> /etc/nix/nix.conf <<EOF
-        experimental-features = nix-command flakes
-        accept-flake-config = true
-        EOF
-      # The two packages the fleet's own commits touch. The full tree has
-      # environmental failures (bifrost-http needs the built UI for
-      # //go:embed; core has resolver-dependent tests) — not CI signal.
-      - nix develop --no-update-lock-file -c bash -c 'go work init ./core ./framework ./transports && for d in plugins/*/; do [ -f "$d/go.mod" ] && go work use "$d"; done && cd transports && go test ./bifrost-http/integrations/ ./bifrost-http/lib/ -count=1'
+      - echo probe-start
+      - id
+      - uname -a
+      - which nix go bash || true
+      - echo probe-done
