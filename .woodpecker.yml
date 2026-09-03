@@ -1,0 +1,17 @@
+# Restored after Surge's MITM was disabled (2026-09-03) — the agent's step
+# streams had been dying through the fake-IP path. Go tests only; the closure
+# build+cache runs on workstation-nyc-2 (see the wiki, local-llm/bifrost).
+when:
+  - event: push
+    branch: dev
+  - event: manual
+steps:
+  - name: go-test
+    image: nixos/nix:2.34.8
+    commands:
+      - |
+        cat >> /etc/nix/nix.conf <<EOF
+        experimental-features = nix-command flakes
+        accept-flake-config = true
+        EOF
+      - nix develop --no-update-lock-file -c bash -c 'go work init ./core ./framework ./transports && for d in plugins/*/; do [ -f "$d/go.mod" ] && go work use "$d"; done && cd transports && go test ./bifrost-http/integrations/ ./bifrost-http/lib/ -count=1'
