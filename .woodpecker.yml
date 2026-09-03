@@ -1,0 +1,49 @@
+# Woodpecker CI (ci.0xdao.app) — build this fork's gateway from the flake and
+# push its closure to the fleet's public niks3 cache (cache.0xtau.com, R2 CDN),
+# so a NixOS host consuming `packages.x86_64-linux.bifrost-http` from this
+# repo substitutes instead of compiling Go 1.27 + Next.js on a 12 GiB guest.
+#
+# Hash identity is the point: this builds exactly the derivation a consumer
+# of this flake evaluates at the same commit — same nixpkgs lock, same
+# vendorHash / npmDepsHash. Bump those in nix/packages/*.nix when go.sum or
+# ui/package-lock.json moves, or the build fails here first.
+#
+# niks3_token is the fleet niks3 API control-plane token
+# (https://niks3.0xtau.com on forge-nyc-2). NAR bytes upload direct to R2 via
+# presigned URLs. Mirrors caoer115/osfiles-modules.
+when:
+  - event: push
+    branch: dev
+  - event: manual
+
+steps:
+  - name: build-and-cache
+    image: nixos/nix:2.34.8
+    environment:
+      NIKS3_TOKEN:
+        from_secret: niks3_token
+    commands:
+      - |
+        cat >> /etc/nix/nix.conf <<EOF
+        experimental-features = nix-command flakes
+        accept-flake-config = true
+        extra-substituters = https://cache.0xtau.com
+        extra-trusted-public-keys = cache.0xtau.com-1:M4y9SWhqZED/M9nvrYvJuxAlEj0umdXnxRYMgoXZxfU=
+        EOF
+      - nix build '.#packages.x86_64-linux.bifrost-http' -L
+      - ./result/bin/bifrost-http --help 2>&1 | head -3 || true
+      - umask 077
+      - printf '%s' "$NIKS3_TOKEN" > /tmp/niks3-token
+      - export NIKS3_AUTH_TOKEN_FILE=/tmp/niks3-token
+      - export NIKS3_SERVER_URL=https://niks3.0xtau.com
+      # Pin niks3 to the rev osfiles locks (nixpkgs' niks3 lags --pin support).
+      - nix profile install github:Mic92/niks3/780939adecefc2f84be700a6f9ae1cc9385ad240#niks3
+      # --pin upserts one store path, shielding the closure from the server's
+      # 30-day GC even when dev goes quiet.
+      - niks3 push --pin "bifrost-http-x86_64-linux" ./result
+      # A successful push is not the same as a host being able to substitute.
+      # Read back exactly what a host reads.
+      - |
+        hash=$(basename "$(readlink -f ./result)" | cut -d- -f1)
+        echo "checking https://cache.0xtau.com/$hash.narinfo"
+        nix run nixpkgs#curl -- -fsS "https://cache.0xtau.com/$hash.narinfo" | head -3

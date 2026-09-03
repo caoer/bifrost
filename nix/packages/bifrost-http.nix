@@ -19,11 +19,16 @@ let
 
     replace github.com/maximhq/bifrost/core => ../core
     replace github.com/maximhq/bifrost/framework => ../framework
-    replace github.com/maximhq/bifrost/plugins/governance => ../plugins/governance
     replace github.com/maximhq/bifrost/plugins/compat => ../plugins/compat
+    replace github.com/maximhq/bifrost/plugins/governance => ../plugins/governance
+    replace github.com/maximhq/bifrost/plugins/jsonparser => ../plugins/jsonparser
     replace github.com/maximhq/bifrost/plugins/logging => ../plugins/logging
     replace github.com/maximhq/bifrost/plugins/maxim => ../plugins/maxim
+    replace github.com/maximhq/bifrost/plugins/mocker => ../plugins/mocker
+    replace github.com/maximhq/bifrost/plugins/modelcatalogresolver => ../plugins/modelcatalogresolver
     replace github.com/maximhq/bifrost/plugins/otel => ../plugins/otel
+    replace github.com/maximhq/bifrost/plugins/prompts => ../plugins/prompts
+    replace github.com/maximhq/bifrost/plugins/routing => ../plugins/routing
     replace github.com/maximhq/bifrost/plugins/semanticcache => ../plugins/semanticcache
     replace github.com/maximhq/bifrost/plugins/telemetry => ../plugins/telemetry
     EOF
@@ -37,7 +42,7 @@ buildGoModule {
 
   modRoot = "transports";
   subPackages = [ "bifrost-http" ];
-  vendorHash = "sha256-Ck1cwv/DYI9EXmp7U2ZSNXlU+Qok8BFn5bcN1Pv7Nmc=";
+  vendorHash = "sha256-GvrKFQ/TwOrRFfesWG5NI3auQxEb16oUz5sLFk41Cuc=";
 
   doCheck = false;
 

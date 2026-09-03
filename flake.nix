@@ -62,7 +62,9 @@
           system,
         }:
         let
-          version = "1.4.9";
+          # The gateway is tagged transports/vX.Y.Z upstream; this fork builds dev,
+          # so the version the dashboard and /api/info report is the commit.
+          version = "dev-${self.shortRev or "dirty"}";
 
           bifrost-ui = pkgs.callPackage ./nix/packages/bifrost-ui.nix {
             src = self;
