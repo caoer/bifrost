@@ -15,10 +15,9 @@
 # (NIKS3_TOKEN: osfiles secrets/hosts/forge-nyc-2.sops.yaml niks3_api_token.
 # Consumers substitute from https://cache.0xtau.com; do not follows nixpkgs.)
 #
-# The step runs on nixos/nix:2.34.8 with pull: never — the image the first
-# pipeline already placed on the agent. Fresh image pulls from Docker Hub die
-# instantly with empty step logs on this agent (rate limit), which is what
-# killed pipelines 2-4. go itself comes from the repo's own devshell.
+# The step runs on nixos/nix:2.34.8 (the agent backend is OrbStack on the Mac;
+# pipelines 2-5 died instantly with empty logs while OrbStack was down).
+# go itself comes from the repo's own devshell.
 when:
   - event: push
     branch: dev
@@ -27,7 +26,6 @@ when:
 steps:
   - name: go-test
     image: nixos/nix:2.34.8
-    pull: never
     commands:
       - |
         cat >> /etc/nix/nix.conf <<EOF
