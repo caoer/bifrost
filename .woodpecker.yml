@@ -1,8 +1,8 @@
 # Woodpecker CI (ci.0xdao.app) — test the fork on every dev push.
 #
-# The closure build is NOT here on purpose: the reachable agent cannot finish
-# the Go 1.27 + Next.js build reliably (two silent step kills with empty logs,
-# 2026-09-03). Build and push the closure from workstation-nyc-2 instead:
+# The closure build is NOT here on purpose: the agent cannot finish the
+# Go 1.27 + Next.js build reliably (2026-09-03). Build and push the closure
+# from workstation-nyc-2 instead:
 #
 #   cd ~/src/bifrost && git fetch https://git.0xdao.app/caoer115/bifrost dev \
 #     && git reset --hard FETCH_HEAD
@@ -14,6 +14,11 @@
 #
 # (NIKS3_TOKEN: osfiles secrets/hosts/forge-nyc-2.sops.yaml niks3_api_token.
 # Consumers substitute from https://cache.0xtau.com; do not follows nixpkgs.)
+#
+# The step runs on nixos/nix:2.34.8 with pull: never — the image the first
+# pipeline already placed on the agent. Fresh image pulls from Docker Hub die
+# instantly with empty step logs on this agent (rate limit), which is what
+# killed pipelines 2-4. go itself comes from the repo's own devshell.
 when:
   - event: push
     branch: dev
@@ -21,12 +26,15 @@ when:
 
 steps:
   - name: go-test
-    image: golang:1.27-bookworm
+    image: nixos/nix:2.34.8
+    pull: never
     commands:
-      # go.work is gitignored upstream; build it the way the repo expects.
-      - go work init ./core ./framework ./transports
-      - for d in plugins/*/; do [ -f "$d/go.mod" ] && go work use "$d"; done
+      - |
+        cat >> /etc/nix/nix.conf <<EOF
+        experimental-features = nix-command flakes
+        accept-flake-config = true
+        EOF
       # The two packages the fleet's own commits touch. The full tree has
       # environmental failures (bifrost-http needs the built UI for
       # //go:embed; core has resolver-dependent tests) — not CI signal.
-      - cd transports && go test ./bifrost-http/integrations/ ./bifrost-http/lib/ -count=1
+      - nix develop --no-update-lock-file -c bash -c 'go work init ./core ./framework ./transports && for d in plugins/*/; do [ -f "$d/go.mod" ] && go work use "$d"; done && cd transports && go test ./bifrost-http/integrations/ ./bifrost-http/lib/ -count=1'
