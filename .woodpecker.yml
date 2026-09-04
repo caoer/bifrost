@@ -14,4 +14,4 @@ steps:
         experimental-features = nix-command flakes
         accept-flake-config = true
         EOF
-      - nix develop --no-update-lock-file -c bash -c 'go work init ./core ./framework ./transports && for d in plugins/*/; do [ -f "$d/go.mod" ] && go work use "$d"; done && cd transports && go test ./bifrost-http/integrations/ ./bifrost-http/lib/ -count=1'
+      - nix develop --no-update-lock-file --option max-jobs 1 --option cores 2 -c bash -c 'go work init ./core ./framework ./transports && for d in plugins/*/; do [ -f "$d/go.mod" ] && go work use "$d"; done && cd transports && go test ./bifrost-http/integrations/ ./bifrost-http/lib/ -count=1'
