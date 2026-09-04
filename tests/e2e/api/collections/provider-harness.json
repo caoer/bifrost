@@ -139289,6 +139289,80 @@
           ]
         }
       ]
+    },
+    {
+      "name": "65. Custom Provider Mid-Conversation System Preservation",
+      "description": "Fleet-only live pin for the explicit preserve_mid_conversation_system_messages option on the custom Anthropic-compatible bigmodel provider. The deterministic unpaid four-path wire proof lives in tests/e2e/api/runners/run-midconv-system-preservation-local.mjs; this row confirms the deployed GLM route exposes the same outbound Anthropic shape.",
+      "item": [
+        {
+          "name": "bigmodel/glm-5.3-flash custom provider preserves mid-conversation system order",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 404 && /provider.*(not found|not configured)|not found.*provider/i.test(pm.response.text())) { return; }",
+                  "if ([401, 403, 429, 500, 502, 503, 504, 529].indexOf(pm.response.code) !== -1) { return; }",
+                  "pm.test('custom provider mid-conversation: request succeeds', function () {",
+                  "  pm.expect(pm.response.code, 'failed: ' + pm.response.text()).to.be.below(400);",
+                  "});",
+                  "if (pm.response.code >= 400) { return; }",
+                  "var body = pm.response.json() || {};",
+                  "var rr = (body.extra_fields || {}).raw_request;",
+                  "if (typeof rr === 'string') { try { rr = JSON.parse(rr); } catch (e) { rr = null; } }",
+                  "pm.test('custom provider mid-conversation: outbound Anthropic request captured', function () {",
+                  "  pm.expect(rr, 'raw_request missing - x-bf-send-back-raw-request not honored').to.be.an('object');",
+                  "});",
+                  "if (!rr || typeof rr !== 'object') { return; }",
+                  "var top = JSON.stringify(rr.system || '');",
+                  "var messages = rr.messages || [];",
+                  "var dump = JSON.stringify(messages);",
+                  "pm.test('custom provider mid-conversation: leading system stays top-level', function () {",
+                  "  pm.expect(top, 'system: ' + top).to.include('terse assistant');",
+                  "  pm.expect(top, 'system: ' + top).to.not.include('opened src/main.go');",
+                  "});",
+                  "pm.test('custom provider mid-conversation: later system is wrapped in-place as user', function () {",
+                  "  var hit = null;",
+                  "  for (var i = 0; i < messages.length; i++) { if (JSON.stringify(messages[i]).indexOf('opened src/main.go') !== -1) { hit = messages[i]; break; } }",
+                  "  pm.expect(hit, 'messages: ' + dump).to.not.eql(null);",
+                  "  pm.expect(hit.role, 'messages: ' + dump).to.eql('user');",
+                  "  pm.expect(JSON.stringify(hit.content), 'messages: ' + dump).to.include('system-reminder');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "x-bf-send-back-raw-request",
+                "value": "true"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"model\": \"bigmodel/glm-5.3-flash\",\n  \"max_tokens\": 16,\n  \"system\": \"You are a terse assistant.\",\n  \"messages\": [\n    {\"role\":\"user\",\"content\":\"Hello\"},\n    {\"role\":\"assistant\",\"content\":\"Hi.\"},\n    {\"role\":\"system\",\"content\":\"The user just opened src/main.go.\"},\n    {\"role\":\"user\",\"content\":\"Reply OK.\"}\n  ]\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/anthropic/v1/messages",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "anthropic",
+                "v1",
+                "messages"
+              ]
+            }
+          }
+        }
+      ]
     }
   ]
 }

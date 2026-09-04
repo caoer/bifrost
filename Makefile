@@ -68,7 +68,7 @@ define EXPOSE_ENV
 	fi
 endef
 
-.PHONY: all help dev dev-pulse build-ui build build-cli run run-cli install-air install-pulse clean test test-cli install-ui setup-workspace work-init work-clean docs docker-image docker-run cleanup-enterprise mod-tidy test-integrations-py test-integrations-ts install-playwright run-e2e run-e2e-ui run-e2e-headed run-e2e-api format ui install-newman run-provider-harness-test smoke-provider-harness-test run-cli-harness-test cli-harness-report test-harness-runner-lib test-semantic-cache test-semantic-cache-complete _test-semantic-cache-complete-inner helm-index install-microsocks socks5-proxy install-tinyproxy http-proxy
+.PHONY: all help dev dev-pulse build-ui build build-cli run run-cli install-air install-pulse clean test test-cli install-ui setup-workspace work-init work-clean docs docker-image docker-run cleanup-enterprise mod-tidy test-integrations-py test-integrations-ts install-playwright run-e2e run-e2e-ui run-e2e-headed run-e2e-api format ui install-newman run-provider-harness-test smoke-provider-harness-test run-cli-harness-test cli-harness-report test-harness-runner-lib test-midconv-system-preservation-local test-semantic-cache test-semantic-cache-complete _test-semantic-cache-complete-inner helm-index install-microsocks socks5-proxy install-tinyproxy http-proxy
 
 all: help
 
@@ -1885,6 +1885,9 @@ test-harness-runner-lib: ## Run the provider-harness runner unit tests (tests/e2
 	done; \
 	if [ "$$RC" -ne 0 ]; then $(ECHO) "$(RED)harness runner lib tests failed$(NC)"; else $(ECHO) "$(GREEN)harness runner lib tests passed$(NC)"; fi; \
 	exit $$RC
+
+test-midconv-system-preservation-local: ## Verify custom OpenAI/Anthropic later-system wire ordering against a running local Bifrost.
+	@$(USE_NODE); node tests/e2e/api/runners/run-midconv-system-preservation-local.mjs
 
 # Named target rather than documentation telling people to type SMOKE=1: a smoke
 # set nobody can invoke in one word does not get used before a release.
