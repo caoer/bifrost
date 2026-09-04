@@ -210,5 +210,14 @@ func (s *Store) loadPricingFromURL(ctx context.Context) (map[string]Entry, error
 		s.logger.Debug("successfully downloaded and parsed %d pricing records", len(pricingData))
 	}
 
+	// The fleet's own rows ride every load, whatever the URL served (fleet.go).
+	merged, err := mergeFleetSheets(pricingData)
+	if err != nil {
+		return nil, err
+	}
+	if s.logger != nil {
+		s.logger.Debug("merged %d fleet pricing records", merged)
+	}
+
 	return pricingData, nil
 }
