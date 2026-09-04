@@ -145,7 +145,7 @@ const chatMessages = [
   { role: "system", content: "initial-system" },
   { role: "user", content: "hello" },
   { role: "assistant", content: "hi" },
-  { role: "system", content: "later-system" },
+  { role: "system", content: [{ type: "text", text: "later-system", cache_control: { type: "ephemeral" } }] },
   { role: "user", content: "continue" },
 ];
 
@@ -181,6 +181,10 @@ function assertAnthropic(index) {
   const hit = body.messages.find((message) => JSON.stringify(message.content).includes("later-system"));
   if (!hit || hit.role !== "user" || !JSON.stringify(hit.content).includes("system-reminder")) {
     throw new Error(`Anthropic later system was not an in-place wrapped user message: ${JSON.stringify(body.messages)}`);
+  }
+  const blocks = Array.isArray(hit.content) ? hit.content : [];
+  if (!blocks.some((block) => block.cache_control?.type === "ephemeral")) {
+    throw new Error(`Anthropic wrapped user message lost cache_control: ${JSON.stringify(hit)}`);
   }
 }
 
