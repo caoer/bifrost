@@ -126,7 +126,10 @@ async function addProvider(name, baseProviderType, port, basePath) {
       request_path_overrides: baseProviderType === "anthropic" ? {
         chat_completion: `http://127.0.0.1:${port}/anthropic/v1/messages`,
         responses: `http://127.0.0.1:${port}/anthropic/v1/messages`,
-      } : undefined,
+      } : {
+        chat_completion: `http://127.0.0.1:${port}/openai/v1/chat/completions`,
+        responses: `http://127.0.0.1:${port}/openai/v1/responses`,
+      },
     },
     network_config: {
       base_url: `http://127.0.0.1:${port}${basePath}`,
