@@ -5034,8 +5034,16 @@ func (bifrost *Bifrost) getProviderByKey(providerKey schemas.ModelProvider) sche
 
 // CORE INTERNAL LOGIC
 
+// fallbackPrimaryAttemptBudget bounds how long a failed primary attempt may have
+// run for a configured fallback to still be tried. A path failure — connection
+// refused, DNS, a dead relay's 5xx — shows up within seconds, and a second route
+// is worth trying. A failure that took minutes came from the model working on the
+// request (a busy upstream timing out on a large prompt); a fallback route reaches
+// the same model, repeats the same wait, and by then the client has given up on both.
+const fallbackPrimaryAttemptBudget = 60 * time.Second
+
 // shouldTryFallbacks handles the primary error and returns true if we should proceed with fallbacks, false if we should return immediately
-func (bifrost *Bifrost) shouldTryFallbacks(req *schemas.BifrostRequest, primaryErr *schemas.BifrostError) bool {
+func (bifrost *Bifrost) shouldTryFallbacks(ctx *schemas.BifrostContext, req *schemas.BifrostRequest, primaryErr *schemas.BifrostError) bool {
 	// If no primary error, we succeeded
 	if primaryErr == nil {
 		bifrost.logger.Debug("no primary error, we should not try fallbacks")
@@ -5060,6 +5068,16 @@ func (bifrost *Bifrost) shouldTryFallbacks(req *schemas.BifrostRequest, primaryE
 	if len(fallbacks) == 0 {
 		bifrost.logger.Debug("no fallbacks configured, we should not try fallbacks")
 		return false
+	}
+
+	// A primary attempt that ran past the budget failed at the model, not on the path
+	if start, ok := ctx.Value(schemas.BifrostContextKeyRequestStartTime).(time.Time); ok {
+		if elapsed := time.Since(start); elapsed > fallbackPrimaryAttemptBudget {
+			bifrost.logger.Debug("primary attempt ran %s before failing, we should not try fallbacks", elapsed.Round(time.Second))
+			schemas.AppendToContextList(ctx, schemas.BifrostContextKeyRoutingEnginesUsed, schemas.RoutingEngineCore)
+			ctx.AppendRoutingEngineLog(schemas.RoutingEngineCore, schemas.LogLevelInfo, fmt.Sprintf("Primary attempt failed after %s (budget for trying a fallback: %s); returning the primary error", elapsed.Round(time.Second), fallbackPrimaryAttemptBudget))
+			return false
+		}
 	}
 
 	// Should proceed with fallbacks
@@ -5264,7 +5282,7 @@ func (bifrost *Bifrost) handleRequest(ctx *schemas.BifrostContext, req *schemas.
 	}
 
 	// Check if we should proceed with fallbacks
-	shouldTryFallbacks := bifrost.shouldTryFallbacks(req, primaryErr)
+	shouldTryFallbacks := bifrost.shouldTryFallbacks(ctx, req, primaryErr)
 	if !shouldTryFallbacks {
 		return primaryResult, primaryErr
 	}
@@ -5401,7 +5419,7 @@ func (bifrost *Bifrost) handleStreamRequest(ctx *schemas.BifrostContext, req *sc
 	}
 
 	// Check if we should proceed with fallbacks
-	shouldTryFallbacks := bifrost.shouldTryFallbacks(req, primaryErr)
+	shouldTryFallbacks := bifrost.shouldTryFallbacks(ctx, req, primaryErr)
 	if !shouldTryFallbacks {
 		return primaryResult, primaryErr
 	}
