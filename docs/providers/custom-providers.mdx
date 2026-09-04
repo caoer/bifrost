@@ -21,22 +21,11 @@ Think of custom providers as "multiple views" of the same underlying provider - 
 
 Custom providers are configured using the `custom_provider_config` field, which extends the standard provider configuration. The main purpose is to create multiple instances of the same base provider, each with different request type restrictions.
 
-### Preserve Later System Messages
+### Later System Messages
 
-OpenAI- and Anthropic-compatible backends can opt into stable prompt-prefix ordering with `preserve_mid_conversation_system_messages`. It defaults to `false` so existing custom providers keep their current request shape.
+The leading run of system messages becomes the system prompt. A system message that arrives after the conversation has started keeps its chronological position instead: OpenAI-bound requests relabel it `developer`; Anthropic-bound requests use the native mid-conversation `system` role where the model supports it, and otherwise wrap the text in `<system-reminder>` and send it as a role-`user` message.
 
-```json
-{
-  "custom_provider_config": {
-    "base_provider_type": "anthropic",
-    "preserve_mid_conversation_system_messages": true
-  }
-}
-```
-
-The leading system run is unchanged. Later system content is kept at its chronological position: OpenAI-bound requests relabel later `system` messages as `developer`; Anthropic-bound requests wrap later system/developer text in `<system-reminder>` and send it as a role-`user` message. This avoids moving new instructions ahead of the stable conversation prefix, but gives them the target protocol's ordinary-message strength rather than a top-level system role.
-
-Enabling the option forces typed request serialization so Bifrost can perform the conversion. Native Anthropic response streaming remains available independently.
+Hoisting such a message into the system prompt would change the prompt at its top on every turn and invalidate the provider's cached prefix behind it. Keeping it in place preserves the cache, at the cost of giving the instruction the target protocol's ordinary-message strength rather than a top-level system role.
 
 **Important**: The `allowed_requests` field follows a specific behavior:
 - **Omitted entirely**: All operations are allowed (default behavior)

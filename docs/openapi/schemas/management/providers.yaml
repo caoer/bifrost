@@ -304,9 +304,6 @@ CustomProviderConfig:
   properties:
     is_key_less:
       type: boolean
-    preserve_mid_conversation_system_messages:
-      type: boolean
-      description: Preserve later system messages in chronological order for compatible OpenAI- or Anthropic-based custom providers
     base_provider_type:
       $ref: '../../schemas/inference/common.yaml#/ModelProvider'
     allowed_requests:
