@@ -156,7 +156,7 @@ const responsesInput = chatMessages.map((message) => ({ type: "message", ...mess
 
 function requireCaptured(path, index = 0) {
   const body = captured.get(path)?.[index];
-  if (!body) throw new Error(`capture upstream did not receive ${path} request ${index + 1}`);
+  if (!body) throw new Error(`capture upstream did not receive ${path} request ${index + 1}; captured paths: ${JSON.stringify([...captured.keys()])}`);
   return body;
 }
 
@@ -197,13 +197,13 @@ async function main() {
   const port = await listen(upstream);
   try {
     await addProvider(providers.openai, "openai", port, "/openai");
-    await addProvider(providers.anthropic, "anthropic", port, "");
-
     await mustRequest("POST", "/v1/chat/completions", { model: `${providers.openai}/${modelName}`, messages: chatMessages });
     await mustRequest("POST", "/v1/responses", { model: `${providers.openai}/${modelName}`, input: responsesInput });
     assertOpenAI("/openai/v1/chat/completions");
     assertOpenAI("/openai/v1/responses");
+    await mustRequest("DELETE", `/api/providers/${encodeURIComponent(providers.openai)}`);
 
+    await addProvider(providers.anthropic, "anthropic", port, "");
     await mustRequest("POST", "/v1/chat/completions", { model: `${providers.anthropic}/${modelName}`, messages: chatMessages, max_tokens: 64 });
     assertAnthropic(0);
     await mustRequest("POST", "/v1/responses", { model: `${providers.anthropic}/${modelName}`, input: responsesInput, max_output_tokens: 64 });
