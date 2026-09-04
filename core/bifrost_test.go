@@ -2935,6 +2935,7 @@ func TestRunPreRequestHooks_CommitsRoutingPinnedKey(t *testing.T) {
 
 func TestSetProviderAttemptContext(t *testing.T) {
 	ctx := schemas.NewBifrostContext(context.Background(), schemas.NoDeadline)
+	ctx.BlockRestrictedWrites()
 
 	base := setProviderAttemptContext(ctx, "bigmodel", &schemas.ProviderConfig{
 		CustomProviderConfig: &schemas.CustomProviderConfig{
@@ -2947,6 +2948,10 @@ func TestSetProviderAttemptContext(t *testing.T) {
 	}
 	if preserve, _ := ctx.Value(schemas.BifrostContextKeyPreserveMidConvSystem).(bool); !preserve {
 		t.Fatal("custom Anthropic opt-in did not enable request-order preservation")
+	}
+	ctx.SetValue(schemas.BifrostContextKeyPreserveMidConvSystem, false)
+	if preserve, _ := ctx.Value(schemas.BifrostContextKeyPreserveMidConvSystem).(bool); !preserve {
+		t.Fatal("provider policy write opened the restricted-write guard")
 	}
 
 	base = setProviderAttemptContext(ctx, "other-anthropic", &schemas.ProviderConfig{
@@ -2965,6 +2970,114 @@ func TestSetProviderAttemptContext(t *testing.T) {
 	}
 	if preserve, _ := ctx.Value(schemas.BifrostContextKeyPreserveMidConvSystem).(bool); preserve {
 		t.Fatal("standard provider inherited a previous attempt's opt-in")
+	}
+}
+
+type nilRequestContextProbe struct {
+	mu       sync.Mutex
+	contexts []*schemas.BifrostContext
+}
+
+func (p *nilRequestContextProbe) GetName() string { return "nil-request-context-probe" }
+func (p *nilRequestContextProbe) Cleanup() error  { return nil }
+func (p *nilRequestContextProbe) PreRequestHook(ctx *schemas.BifrostContext, _ *schemas.BifrostRequest) error {
+	p.mu.Lock()
+	p.contexts = append(p.contexts, ctx.Root())
+	p.mu.Unlock()
+	return nil
+}
+func (p *nilRequestContextProbe) PreLLMHook(_ *schemas.BifrostContext, req *schemas.BifrostRequest) (*schemas.BifrostRequest, *schemas.LLMPluginShortCircuit, error) {
+	response := &schemas.BifrostResponse{}
+	switch req.RequestType {
+	case schemas.ChatCompletionRequest, schemas.ChatCompletionStreamRequest:
+		response.ChatResponse = &schemas.BifrostChatResponse{}
+	case schemas.ResponsesRequest:
+		response.ResponsesResponse = &schemas.BifrostResponsesResponse{}
+	case schemas.ResponsesStreamRequest:
+		response.ResponsesStreamResponse = &schemas.BifrostResponsesStreamResponse{}
+	}
+	return req, &schemas.LLMPluginShortCircuit{Response: response}, nil
+}
+func (p *nilRequestContextProbe) PostLLMHook(_ *schemas.BifrostContext, response *schemas.BifrostResponse, bifrostErr *schemas.BifrostError) (*schemas.BifrostResponse, *schemas.BifrostError, error) {
+	return response, bifrostErr, nil
+}
+
+func TestNilSDKRequestContextsAreIsolated(t *testing.T) {
+	probe := &nilRequestContextProbe{}
+	account := NewMockAccount()
+	account.AddProvider(schemas.OpenAI, 1, 1)
+	client, err := Init(context.Background(), schemas.BifrostConfig{
+		Account:    account,
+		Logger:     NewNoOpLogger(),
+		LLMPlugins: []schemas.LLMPlugin{probe},
+	})
+	if err != nil {
+		t.Fatalf("Init failed: %v", err)
+	}
+	t.Cleanup(client.Shutdown)
+	client.ctx.SetValue("instance-value", "inherited")
+
+	chatRequest := func() *schemas.BifrostChatRequest {
+		return &schemas.BifrostChatRequest{
+			Provider: schemas.OpenAI,
+			Model:    "test-model",
+			Input:    []schemas.ChatMessage{{Role: schemas.ChatMessageRoleUser}},
+		}
+	}
+	responsesRequest := func() *schemas.BifrostResponsesRequest {
+		return &schemas.BifrostResponsesRequest{
+			Provider: schemas.OpenAI,
+			Model:    "test-model",
+			Input:    []schemas.ResponsesMessage{{}},
+		}
+	}
+
+	if _, bifrostErr := client.ChatCompletionRequest(nil, chatRequest()); bifrostErr != nil {
+		t.Fatalf("ChatCompletionRequest failed: %v", bifrostErr)
+	}
+	chatStream, bifrostErr := client.ChatCompletionStreamRequest(nil, chatRequest())
+	if bifrostErr != nil {
+		t.Fatalf("ChatCompletionStreamRequest failed: %v", bifrostErr)
+	}
+	for range chatStream {
+	}
+	if _, bifrostErr := client.ResponsesRequest(nil, responsesRequest()); bifrostErr != nil {
+		t.Fatalf("ResponsesRequest failed: %v", bifrostErr)
+	}
+	responsesStream, bifrostErr := client.ResponsesStreamRequest(nil, responsesRequest())
+	if bifrostErr != nil {
+		t.Fatalf("ResponsesStreamRequest failed: %v", bifrostErr)
+	}
+	for range responsesStream {
+	}
+
+	probe.mu.Lock()
+	contexts := append([]*schemas.BifrostContext(nil), probe.contexts...)
+	probe.mu.Unlock()
+	if len(contexts) != 4 {
+		t.Fatalf("captured %d request contexts, want 4", len(contexts))
+	}
+	seen := make(map[*schemas.BifrostContext]struct{}, len(contexts))
+	for i, ctx := range contexts {
+		if ctx == client.ctx {
+			t.Fatalf("request %d used the shared Bifrost instance context", i)
+		}
+		if _, duplicate := seen[ctx]; duplicate {
+			t.Fatalf("request %d reused another request's context", i)
+		}
+		seen[ctx] = struct{}{}
+		if got := ctx.Value("instance-value"); got != "inherited" {
+			t.Fatalf("request %d inherited value = %v, want inherited", i, got)
+		}
+	}
+	contexts[0].SetValue("request-value", "first")
+	if got := client.ctx.Value("request-value"); got != nil {
+		t.Fatalf("request value leaked to instance context: %v", got)
+	}
+	for i, ctx := range contexts[1:] {
+		if got := ctx.Value("request-value"); got != nil {
+			t.Fatalf("request value leaked to request %d: %v", i+1, got)
+		}
 	}
 }
 

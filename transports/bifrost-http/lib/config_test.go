@@ -20273,6 +20273,37 @@ func TestLoadConfig_GovernanceAuthConfig_PersistsFromFirstImport(t *testing.T) {
 // AddProvider Tests
 // =============================================================================
 
+func TestValidateCustomProvider_PreserveMidConversationSystemMessages(t *testing.T) {
+	tests := []struct {
+		name      string
+		base      schemas.ModelProvider
+		preserve  bool
+		wantError bool
+	}{
+		{name: "OpenAI enabled", base: schemas.OpenAI, preserve: true},
+		{name: "Anthropic enabled", base: schemas.Anthropic, preserve: true},
+		{name: "Bedrock disabled", base: schemas.Bedrock, preserve: false},
+		{name: "Bedrock enabled", base: schemas.Bedrock, preserve: true, wantError: true},
+		{name: "Gemini enabled", base: schemas.Gemini, preserve: true, wantError: true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := ValidateCustomProvider(configstore.ProviderConfig{
+				CustomProviderConfig: &schemas.CustomProviderConfig{
+					BaseProviderType:                      tt.base,
+					PreserveMidConversationSystemMessages: tt.preserve,
+				},
+			}, "custom-provider")
+			if tt.wantError {
+				require.ErrorContains(t, err, "preserve_mid_conversation_system_messages requires base_provider_type openai or anthropic")
+				return
+			}
+			require.NoError(t, err)
+		})
+	}
+}
+
 // mockConfigStoreAddProvider is a ConfigStore mock that allows controlling AddProvider behavior.
 type mockConfigStoreAddProvider struct {
 	MockConfigStore

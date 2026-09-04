@@ -7386,6 +7386,9 @@ func ValidateCustomProvider(config configstore.ProviderConfig, provider schemas.
 	if !bifrost.IsSupportedBaseProvider(cpc.BaseProviderType) {
 		return fmt.Errorf("custom provider validation failed: unsupported base_provider_type: %s", cpc.BaseProviderType)
 	}
+	if cpc.PreserveMidConversationSystemMessages && cpc.BaseProviderType != schemas.OpenAI && cpc.BaseProviderType != schemas.Anthropic {
+		return fmt.Errorf("custom provider validation failed: preserve_mid_conversation_system_messages requires base_provider_type openai or anthropic")
+	}
 
 	// Reject Bedrock providers with IsKeyLess=true
 	if cpc.BaseProviderType == schemas.Bedrock && cpc.IsKeyLess {

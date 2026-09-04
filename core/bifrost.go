@@ -431,6 +431,17 @@ func (bifrost *Bifrost) ReloadConfig(config schemas.BifrostConfig) error {
 
 // PUBLIC API METHODS
 
+// requestContext gives nil-context SDK calls their own mutable request state
+// while retaining values and grants installed on the Bifrost instance context.
+// WithoutCancel avoids a watcher goroutine that would otherwise live until the
+// whole Bifrost instance shuts down.
+func (bifrost *Bifrost) requestContext(ctx *schemas.BifrostContext) *schemas.BifrostContext {
+	if ctx != nil {
+		return ctx
+	}
+	return schemas.NewBifrostContext(context.WithoutCancel(bifrost.ctx), schemas.NoDeadline)
+}
+
 // ListModelsRequest sends a list models request to the specified provider.
 func (bifrost *Bifrost) ListModelsRequest(ctx *schemas.BifrostContext, req *schemas.BifrostListModelsRequest) (*schemas.BifrostListModelsResponse, *schemas.BifrostError) {
 	if req == nil {
@@ -797,10 +808,7 @@ func (bifrost *Bifrost) makeChatCompletionRequest(ctx *schemas.BifrostContext, r
 
 // ChatCompletionRequest sends a chat completion request to the specified provider.
 func (bifrost *Bifrost) ChatCompletionRequest(ctx *schemas.BifrostContext, req *schemas.BifrostChatRequest) (*schemas.BifrostChatResponse, *schemas.BifrostError) {
-	// If ctx is nil, use the bifrost context (defensive check for mcp agent mode)
-	if ctx == nil {
-		ctx = bifrost.ctx
-	}
+	ctx = bifrost.requestContext(ctx)
 
 	response, err := bifrost.makeChatCompletionRequest(ctx, req)
 	if err != nil {
@@ -822,6 +830,7 @@ func (bifrost *Bifrost) ChatCompletionRequest(ctx *schemas.BifrostContext, req *
 
 // ChatCompletionStreamRequest sends a chat completion stream request to the specified provider.
 func (bifrost *Bifrost) ChatCompletionStreamRequest(ctx *schemas.BifrostContext, req *schemas.BifrostChatRequest) (chan *schemas.BifrostStreamChunk, *schemas.BifrostError) {
+	ctx = bifrost.requestContext(ctx)
 	if req == nil {
 		return nil, &schemas.BifrostError{
 			IsBifrostError: false,
@@ -899,10 +908,7 @@ func (bifrost *Bifrost) makeResponsesRequest(ctx *schemas.BifrostContext, req *s
 
 // ResponsesRequest sends a responses request to the specified provider.
 func (bifrost *Bifrost) ResponsesRequest(ctx *schemas.BifrostContext, req *schemas.BifrostResponsesRequest) (*schemas.BifrostResponsesResponse, *schemas.BifrostError) {
-	// If ctx is nil, use the bifrost context (defensive check for mcp agent mode)
-	if ctx == nil {
-		ctx = bifrost.ctx
-	}
+	ctx = bifrost.requestContext(ctx)
 
 	response, err := bifrost.makeResponsesRequest(ctx, req)
 	if err != nil {
@@ -924,6 +930,7 @@ func (bifrost *Bifrost) ResponsesRequest(ctx *schemas.BifrostContext, req *schem
 
 // ResponsesStreamRequest sends a responses stream request to the specified provider.
 func (bifrost *Bifrost) ResponsesStreamRequest(ctx *schemas.BifrostContext, req *schemas.BifrostResponsesRequest) (chan *schemas.BifrostStreamChunk, *schemas.BifrostError) {
+	ctx = bifrost.requestContext(ctx)
 	if req == nil {
 		return nil, &schemas.BifrostError{
 			IsBifrostError: false,
@@ -6869,9 +6876,10 @@ func setProviderAttemptContext(ctx *schemas.BifrostContext, providerKey schemas.
 		preserveMidConversationSystemMessages = (baseProvider == schemas.OpenAI || baseProvider == schemas.Anthropic) &&
 			config.CustomProviderConfig.PreserveMidConversationSystemMessages
 	}
+
 	ctx.SetValue(schemas.BifrostContextKeyIsCustomProvider, !IsStandardProvider(baseProvider))
 	ctx.SetValue(schemas.BifrostContextKeyBaseProviderType, baseProvider)
-	ctx.SetValue(schemas.BifrostContextKeyPreserveMidConvSystem, preserveMidConversationSystemMessages)
+	ctx.SetPreserveMidConversationSystemMessagesPolicy(preserveMidConversationSystemMessages)
 	return baseProvider
 }
 
