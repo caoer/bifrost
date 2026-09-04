@@ -776,7 +776,6 @@ func TestSchemaProviderRawRequest(t *testing.T) {
 					"custom_provider_config": {
 						"base_provider_type": "openai",
 						"is_key_less": false,
-						"preserve_mid_conversation_system_messages": true,
 						"allowed_requests": {
 							"chat_completion": true,
 							"chat_completion_stream": true
@@ -790,39 +789,6 @@ func TestSchemaProviderRawRequest(t *testing.T) {
 		}
 	})
 
-	for _, tc := range []struct {
-		name  string
-		value string
-		valid bool
-	}{
-		{name: "omitted", value: "", valid: true},
-		{name: "true", value: `,"preserve_mid_conversation_system_messages":true`, valid: true},
-		{name: "false", value: `,"preserve_mid_conversation_system_messages":false`, valid: true},
-		{name: "string", value: `,"preserve_mid_conversation_system_messages":"true"`, valid: false},
-		{name: "number", value: `,"preserve_mid_conversation_system_messages":1`, valid: false},
-		{name: "object", value: `,"preserve_mid_conversation_system_messages":{}`, valid: false},
-		{name: "array", value: `,"preserve_mid_conversation_system_messages":[]`, valid: false},
-		{name: "null", value: `,"preserve_mid_conversation_system_messages":null`, valid: false},
-	} {
-		t.Run("preserve_mid_conversation_system_messages "+tc.name, func(t *testing.T) {
-			compiled := compileSchema(t)
-			config := fmt.Sprintf(`{
-				"providers": {
-					"openai": {
-						"keys": [{"name": "test", "value": "sk-test", "weight": 1, "models": ["*"]}],
-						"custom_provider_config": {"base_provider_type":"anthropic"%s}
-					}
-				}
-			}`, tc.value)
-			err := validateConfig(t, compiled, config)
-			if tc.valid && err != nil {
-				t.Fatalf("expected valid config, got: %v", err)
-			}
-			if !tc.valid && err == nil {
-				t.Fatal("expected schema validation to reject non-boolean value")
-			}
-		})
-	}
 }
 
 func TestSchemaGovernanceProviders(t *testing.T) {

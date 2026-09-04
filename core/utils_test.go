@@ -365,7 +365,6 @@ func TestClearCtxForFallback(t *testing.T) {
 		schemas.BifrostContextKeyStreamEndIndicator,
 		schemas.BifrostContextKeyConnectionClosed,
 		schemas.BifrostContextKeySupportsAssistantPrefill,
-		schemas.BifrostContextKeyPreserveMidConvSystem,
 	}
 	// The next attempt resolves its own limits, which needs the same credential and caller.
 	preserved := []schemas.BifrostContextKey{

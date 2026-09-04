@@ -399,7 +399,6 @@ export interface AllowedRequests {
 export interface CustomProviderConfig {
 	base_provider_type: KnownProvider;
 	is_key_less?: boolean;
-	preserve_mid_conversation_system_messages?: boolean;
 	allowed_requests?: AllowedRequests;
 	request_path_overrides?: Record<string, string>;
 }

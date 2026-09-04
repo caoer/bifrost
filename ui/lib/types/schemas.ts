@@ -668,7 +668,6 @@ export const customProviderConfigSchema = z
 	.object({
 		base_provider_type: knownProviderSchema,
 		is_key_less: z.boolean().optional(),
-		preserve_mid_conversation_system_messages: z.boolean().optional(),
 		allowed_requests: allowedRequestsSchema.optional(),
 		request_path_overrides: z.record(z.string(), z.string().optional()).optional(),
 	})
@@ -690,7 +689,6 @@ export const formCustomProviderConfigSchema = z
 	.object({
 		base_provider_type: z.string().min(1, "Base provider type is required"),
 		is_key_less: z.boolean().optional(),
-		preserve_mid_conversation_system_messages: z.boolean().optional(),
 		allowed_requests: allowedRequestsSchema.optional(),
 		request_path_overrides: z.record(z.string(), z.string().optional()).optional(),
 	})

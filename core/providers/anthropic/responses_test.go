@@ -1,7 +1,6 @@
 package anthropic
 
 import (
-	"strings"
 	"testing"
 	"time"
 
@@ -27,10 +26,9 @@ func TestToAnthropicResponsesRequest_CustomProviderPreservesMidConversationSyste
 		}
 	}
 
-	t.Run("enabled inlines later instruction in place", func(t *testing.T) {
+	t.Run("inlines later instruction in place", func(t *testing.T) {
 		ctx := schemas.NewBifrostContext(nil, time.Time{})
 		ctx.SetValue(schemas.BifrostContextKeyBaseProviderType, schemas.Anthropic)
-		ctx.SetValue(schemas.BifrostContextKeyPreserveMidConvSystem, true)
 
 		result, err := ToAnthropicResponsesRequest(ctx, makeRequest())
 		if err != nil {
@@ -39,19 +37,6 @@ func TestToAnthropicResponsesRequest_CustomProviderPreservesMidConversationSyste
 		assertInlinedReminder(t, result, "Later instruction.")
 	})
 
-	t.Run("disabled keeps legacy hoisting", func(t *testing.T) {
-		ctx := schemas.NewBifrostContext(nil, time.Time{})
-		ctx.SetValue(schemas.BifrostContextKeyBaseProviderType, schemas.Anthropic)
-		ctx.SetValue(schemas.BifrostContextKeyPreserveMidConvSystem, false)
-
-		result, err := ToAnthropicResponsesRequest(ctx, makeRequest())
-		if err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
-		if result.System == nil || !strings.Contains(strings.Join(textBlocks(result.System), "\n"), "Later instruction.") {
-			t.Fatalf("later instruction was not hoisted with the option disabled: %+v", result.System)
-		}
-	})
 }
 
 func makeResponsesTextFormat(schemaName string) *schemas.ResponsesTextConfig {

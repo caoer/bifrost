@@ -5029,12 +5029,10 @@ func ConvertBifrostMessagesToAnthropicMessages(ctx *schemas.BifrostContext, bifr
 	seenConversation := false
 	midConvSystemSupported := isRequestMessage && caps.SupportsMidConversationSystem(
 		DefaultSupportsMidConversationSystem(caps.Provider(), caps.Model()))
-	// When the native role:"system" form isn't available, inline the reminder as a user turn
-	// rather than hoisting it into the top-level system block — hoisting preserves the
-	// breakpoint but invalidates the cached prefix behind it. Native Anthropic-family models
-	// take this path automatically; compatible custom Anthropic providers can opt in through
-	// their per-attempt configuration.
-	inlineMidConvSystem := isRequestMessage && schemas.ShouldPreserveMidConversationSystemMessages(ctx, caps.Model())
+	// When the native role:"system" form isn't available, the reminder is inlined as a user
+	// turn, never hoisted into the top-level system block — that changes the prompt at its
+	// top on every turn and invalidates the provider's cached prefix behind it.
+	inlineMidConvSystem := isRequestMessage
 
 	var anthropicMessages []AnthropicMessage
 	var systemContent *AnthropicContent
@@ -5270,7 +5268,7 @@ func ConvertBifrostMessagesToAnthropicMessages(ctx *schemas.BifrostContext, bifr
 							anthropicMessages = append(anthropicMessages, *inlined)
 						}
 					default:
-						// Leading system run, or a non-Anthropic model: hoist (historical behavior).
+						// Leading system run: the conversation's own system prompt.
 						systemContent = appendToSystemContent(systemContent, *content)
 					}
 				}

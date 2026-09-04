@@ -116,7 +116,6 @@ async function addProvider(name, baseProviderType, port, basePath) {
     custom_provider_config: {
       base_provider_type: baseProviderType,
       is_key_less: true,
-      preserve_mid_conversation_system_messages: true,
       allowed_requests: {
         chat_completion: true,
         chat_completion_stream: true,

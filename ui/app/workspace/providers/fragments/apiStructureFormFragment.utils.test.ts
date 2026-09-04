@@ -1,17 +1,11 @@
 import { describe, expect, it } from "vitest";
 
-import { customProviderConfigSchema, formCustomProviderConfigSchema } from "@/lib/types/schemas";
 import { getApiStructureFormDefaults } from "./apiStructureFormFragment.utils";
 
 describe("getApiStructureFormDefaults", () => {
-	it("defaults an omitted preservation policy to false", () => {
-		expect(getApiStructureFormDefaults({ base_provider_type: "anthropic" }).preserve_mid_conversation_system_messages).toBe(false);
-	});
-
-	it("retains an enabled policy and sibling configuration", () => {
+	it("retains the configuration it is given", () => {
 		const defaults = getApiStructureFormDefaults({
 			base_provider_type: "anthropic",
-			preserve_mid_conversation_system_messages: true,
 			allowed_requests: {
 				text_completion: true,
 				text_completion_stream: true,
@@ -45,18 +39,8 @@ describe("getApiStructureFormDefaults", () => {
 			request_path_overrides: { responses: "/messages" },
 		});
 
-		expect(defaults.preserve_mid_conversation_system_messages).toBe(true);
 		expect(defaults.allowed_requests.chat_completion).toBe(false);
 		expect(defaults.allowed_requests.responses).toBe(true);
 		expect(defaults.request_path_overrides).toEqual({ responses: "/messages" });
 	});
-});
-
-describe("custom provider preservation policy schemas", () => {
-	for (const schema of [customProviderConfigSchema, formCustomProviderConfigSchema]) {
-		it("accepts booleans and rejects non-booleans", () => {
-			expect(schema.safeParse({ base_provider_type: "anthropic", preserve_mid_conversation_system_messages: true }).success).toBe(true);
-			expect(schema.safeParse({ base_provider_type: "anthropic", preserve_mid_conversation_system_messages: "true" }).success).toBe(false);
-		});
-	}
 });

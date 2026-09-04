@@ -6736,16 +6736,6 @@ func clearAnthropicPassthroughForNonNativeProvider(ctx *schemas.BifrostContext, 
 	if integrationType, _ := ctx.Value(schemas.BifrostContextKeyIntegrationType).(string); integrationType != "anthropic" {
 		return
 	}
-	preserveMidConversationSystemMessages, _ := ctx.Value(schemas.BifrostContextKeyPreserveMidConvSystem).(bool)
-	if preserveMidConversationSystemMessages {
-		// The request must pass through typed conversion for later system/developer
-		// messages to remain in chronological order. Response passthrough is
-		// independent and can retain the native Anthropic stream codec.
-		ctx.SetValue(schemas.BifrostContextKeyUseRawRequestBody, false)
-		ctx.ClearValue(schemas.BifrostContextKeyRawRequestBodyTextRewriter)
-		ctx.ClearValue(schemas.BifrostContextKeyURLPath)
-		return
-	}
 	if baseProvider == schemas.Anthropic {
 		return
 	}
@@ -6868,18 +6858,12 @@ func applyRawCaptureSignals(ctx *schemas.BifrostContext, config *schemas.Provide
 // cannot inherit an earlier provider's opt-in.
 func setProviderAttemptContext(ctx *schemas.BifrostContext, providerKey schemas.ModelProvider, config *schemas.ProviderConfig) schemas.ModelProvider {
 	baseProvider := providerKey
-	preserveMidConversationSystemMessages := false
-	if config != nil && config.CustomProviderConfig != nil {
-		if config.CustomProviderConfig.BaseProviderType != "" {
-			baseProvider = config.CustomProviderConfig.BaseProviderType
-		}
-		preserveMidConversationSystemMessages = (baseProvider == schemas.OpenAI || baseProvider == schemas.Anthropic) &&
-			config.CustomProviderConfig.PreserveMidConversationSystemMessages
+	if config != nil && config.CustomProviderConfig != nil && config.CustomProviderConfig.BaseProviderType != "" {
+		baseProvider = config.CustomProviderConfig.BaseProviderType
 	}
 
 	ctx.SetValue(schemas.BifrostContextKeyIsCustomProvider, !IsStandardProvider(baseProvider))
 	ctx.SetValue(schemas.BifrostContextKeyBaseProviderType, baseProvider)
-	ctx.SetPreserveMidConversationSystemMessagesPolicy(preserveMidConversationSystemMessages)
 	return baseProvider
 }
 

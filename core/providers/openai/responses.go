@@ -95,10 +95,6 @@ func ToOpenAIResponsesRequest(ctx *schemas.BifrostContext, bifrostReq *schemas.B
 	caps := schemas.ResolveModelCaps(bifrostReq.Provider, capModel)
 
 	var messages []schemas.ResponsesMessage
-	preserveMidConversationSystemMessages := false
-	if ctx != nil {
-		preserveMidConversationSystemMessages, _ = ctx.Value(schemas.BifrostContextKeyPreserveMidConvSystem).(bool)
-	}
 	seenConversation := false
 	// OpenAI models (except for gpt-oss) do not support reasoning content blocks, so we need to convert them to summaries, if there are any
 	// OpenAI also doesn't support compaction content blocks, so we need to convert them to text blocks,
@@ -113,7 +109,7 @@ func ToOpenAIResponsesRequest(ctx *schemas.BifrostContext, bifrostReq *schemas.B
 			if !isSystem {
 				seenConversation = true
 			}
-		} else if preserveMidConversationSystemMessages && isSystem {
+		} else if isSystem {
 			message.Role = schemas.Ptr(schemas.ResponsesInputMessageRoleDeveloper)
 		}
 		if !keepAdditionalTools && message.Type != nil &&

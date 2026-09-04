@@ -1470,9 +1470,8 @@ func TestToOpenAIChatRequest_CustomProviderPreservesMidConversationSystemOrder(t
 		}
 	}
 
-	t.Run("enabled converts only later system roles", func(t *testing.T) {
+	t.Run("converts only later system roles", func(t *testing.T) {
 		ctx := schemas.NewBifrostContext(nil, time.Time{})
-		ctx.SetValue(schemas.BifrostContextKeyPreserveMidConvSystem, true)
 		result := ToOpenAIChatRequest(ctx, makeRequest())
 		require.Equal(t, []schemas.ChatMessageRole{
 			schemas.ChatMessageRoleSystem,
@@ -1483,12 +1482,6 @@ func TestToOpenAIChatRequest_CustomProviderPreservesMidConversationSystemOrder(t
 		}, []schemas.ChatMessageRole{result.Messages[0].Role, result.Messages[1].Role, result.Messages[2].Role, result.Messages[3].Role, result.Messages[4].Role})
 	})
 
-	t.Run("disabled keeps legacy system role", func(t *testing.T) {
-		ctx := schemas.NewBifrostContext(nil, time.Time{})
-		ctx.SetValue(schemas.BifrostContextKeyPreserveMidConvSystem, false)
-		result := ToOpenAIChatRequest(ctx, makeRequest())
-		require.Equal(t, schemas.ChatMessageRoleSystem, result.Messages[3].Role)
-	})
 }
 
 func TestToOpenAIChatRequest_CacheControl_OpenRouterOnly(t *testing.T) {

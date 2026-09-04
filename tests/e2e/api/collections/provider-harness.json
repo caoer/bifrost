@@ -139292,7 +139292,7 @@
     },
     {
       "name": "65. Custom Provider Mid-Conversation System Preservation",
-      "description": "Fleet-only live pin for the explicit preserve_mid_conversation_system_messages option on the custom Anthropic-compatible bigmodel provider. The deterministic unpaid four-path wire proof lives in tests/e2e/api/runners/run-midconv-system-preservation-local.mjs; this row confirms the deployed GLM route exposes the same outbound Anthropic shape.",
+      "description": "Fleet-only live pin for mid-conversation system order on the custom Anthropic-compatible bigmodel provider. The deterministic unpaid four-path wire proof lives in tests/e2e/api/runners/run-midconv-system-preservation-local.mjs; this row confirms the deployed GLM route exposes the same outbound Anthropic shape.",
       "item": [
         {
           "name": "bigmodel/glm-5.3-flash custom provider preserves mid-conversation system order",

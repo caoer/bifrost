@@ -2938,20 +2938,10 @@ func TestSetProviderAttemptContext(t *testing.T) {
 	ctx.BlockRestrictedWrites()
 
 	base := setProviderAttemptContext(ctx, "bigmodel", &schemas.ProviderConfig{
-		CustomProviderConfig: &schemas.CustomProviderConfig{
-			BaseProviderType:                      schemas.Anthropic,
-			PreserveMidConversationSystemMessages: true,
-		},
+		CustomProviderConfig: &schemas.CustomProviderConfig{BaseProviderType: schemas.Anthropic},
 	})
 	if base != schemas.Anthropic {
 		t.Fatalf("base provider = %q, want anthropic", base)
-	}
-	if preserve, _ := ctx.Value(schemas.BifrostContextKeyPreserveMidConvSystem).(bool); !preserve {
-		t.Fatal("custom Anthropic opt-in did not enable request-order preservation")
-	}
-	ctx.SetValue(schemas.BifrostContextKeyPreserveMidConvSystem, false)
-	if preserve, _ := ctx.Value(schemas.BifrostContextKeyPreserveMidConvSystem).(bool); !preserve {
-		t.Fatal("provider policy write opened the restricted-write guard")
 	}
 
 	base = setProviderAttemptContext(ctx, "other-anthropic", &schemas.ProviderConfig{
@@ -2960,16 +2950,10 @@ func TestSetProviderAttemptContext(t *testing.T) {
 	if base != schemas.Anthropic {
 		t.Fatalf("base provider = %q, want anthropic", base)
 	}
-	if preserve, _ := ctx.Value(schemas.BifrostContextKeyPreserveMidConvSystem).(bool); preserve {
-		t.Fatal("default-off custom provider inherited a previous attempt's opt-in")
-	}
 
 	base = setProviderAttemptContext(ctx, schemas.OpenAI, &schemas.ProviderConfig{})
 	if base != schemas.OpenAI {
 		t.Fatalf("base provider = %q, want openai", base)
-	}
-	if preserve, _ := ctx.Value(schemas.BifrostContextKeyPreserveMidConvSystem).(bool); preserve {
-		t.Fatal("standard provider inherited a previous attempt's opt-in")
 	}
 }
 
@@ -3182,48 +3166,6 @@ func TestClearAnthropicPassthroughForNonNativeProvider(t *testing.T) {
 // Mantle Messages API with output_config.format intact — 400 "Extra inputs are not permitted".
 // Only the raw request body is dropped: the raw response flags stay on, and the response path
 // keys off the synthetic bf_so_* tool name instead. Vertex and Azure take the same route.
-type preservePolicyRawStreamCodec struct{}
-
-func (preservePolicyRawStreamCodec) Inspect(string) (schemas.RawStreamTextEvent, bool, error) {
-	return schemas.RawStreamTextEvent{}, false, nil
-}
-
-func (preservePolicyRawStreamCodec) Rewrite(rawResponse string, _ string) (string, error) {
-	return rawResponse, nil
-}
-
-func TestClearAnthropicPassthroughForMidConversationPolicy(t *testing.T) {
-	ctx := schemas.NewBifrostContext(context.Background(), schemas.NoDeadline)
-	ctx.SetValue(schemas.BifrostContextKeyIntegrationType, "anthropic")
-	ctx.SetValue(schemas.BifrostContextKeyPreserveMidConvSystem, true)
-	ctx.SetValue(schemas.BifrostContextKeyUseRawRequestBody, true)
-	ctx.SetValue(schemas.BifrostContextKeySendBackRawResponse, true)
-	ctx.SetValue(schemas.BifrostContextKeyPassthroughOverridesPresent, true)
-	ctx.SetValue(schemas.BifrostContextKeyRawRequestBodyTextRewriter, schemas.RawRequestBodyTextRewriter(func(body []byte, _ map[string]string) ([]byte, error) { return body, nil }))
-	ctx.SetValue(schemas.BifrostContextKeyRawStreamTextCodec, schemas.RawStreamTextCodec(preservePolicyRawStreamCodec{}))
-	ctx.SetValue(schemas.BifrostContextKeyURLPath, "/v1/messages")
-
-	clearAnthropicPassthroughForNonNativeProvider(ctx, schemas.Anthropic, "glm-5.3-flash")
-
-	if useRawBody, _ := ctx.Value(schemas.BifrostContextKeyUseRawRequestBody).(bool); useRawBody {
-		t.Fatal("raw request body stayed enabled under the preservation policy")
-	}
-	if ctx.Value(schemas.BifrostContextKeyRawRequestBodyTextRewriter) != nil {
-		t.Fatal("raw request rewriter survived typed request conversion")
-	}
-	if ctx.Value(schemas.BifrostContextKeyURLPath) != nil {
-		t.Fatal("caller URL path survived typed request conversion")
-	}
-	if sendRawResponse, _ := ctx.Value(schemas.BifrostContextKeySendBackRawResponse).(bool); !sendRawResponse {
-		t.Fatal("native Anthropic response passthrough was disabled")
-	}
-	if ctx.Value(schemas.BifrostContextKeyRawStreamTextCodec) == nil {
-		t.Fatal("native Anthropic response stream codec was cleared")
-	}
-	if overridesPresent, _ := ctx.Value(schemas.BifrostContextKeyPassthroughOverridesPresent).(bool); !overridesPresent {
-		t.Fatal("response passthrough override marker was cleared")
-	}
-}
 
 func TestClearAnthropicPassthroughForUnsupportedStructuredOutput(t *testing.T) {
 	const outputConfigBody = `{"model":"claude-sonnet-5","output_config":{"format":{"type":"json_schema","schema":{"type":"object","properties":{"title":{"type":"string"}}}}}}`

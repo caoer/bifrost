@@ -486,21 +486,6 @@ func IsAnthropicModelFamily(ctx *BifrostContext, model string) bool {
 	return ResolveFamily(ctx, model) == ModelFamilyAnthropic
 }
 
-// ShouldPreserveMidConversationSystemMessages reports whether an Anthropic-wire
-// request should keep later system/developer messages at their chronological
-// position. Native Anthropic-family behavior remains enabled; custom providers
-// can opt in for compatible non-Claude models through their attempt context.
-func ShouldPreserveMidConversationSystemMessages(ctx *BifrostContext, model string) bool {
-	if IsAnthropicModelFamily(ctx, model) {
-		return true
-	}
-	if ctx == nil {
-		return false
-	}
-	preserve, _ := ctx.Value(BifrostContextKeyPreserveMidConvSystem).(bool)
-	return preserve
-}
-
 func IsOpenAIModelFamily(ctx *BifrostContext, model string) bool {
 	return ResolveFamily(ctx, model) == ModelFamilyOpenAI
 }
