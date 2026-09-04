@@ -1836,11 +1836,10 @@ func TestToAnthropicChatRequest_CustomProviderPreservesMidConversationSystemOrde
 		}
 	}
 
-	t.Run("enabled inlines later instruction in place", func(t *testing.T) {
+	t.Run("inlines later instruction in place", func(t *testing.T) {
 		ctx, cancel := schemas.NewBifrostContextWithCancel(context.Background())
 		defer cancel()
 		ctx.SetValue(schemas.BifrostContextKeyBaseProviderType, schemas.Anthropic)
-		ctx.SetValue(schemas.BifrostContextKeyPreserveMidConvSystem, true)
 
 		result, err := ToAnthropicChatRequest(ctx, makeRequest())
 		if err != nil {
@@ -1862,20 +1861,6 @@ func TestToAnthropicChatRequest_CustomProviderPreservesMidConversationSystemOrde
 		t.Fatal("did not find the two-block inlined reminder")
 	})
 
-	t.Run("disabled keeps legacy hoisting", func(t *testing.T) {
-		ctx, cancel := schemas.NewBifrostContextWithCancel(context.Background())
-		defer cancel()
-		ctx.SetValue(schemas.BifrostContextKeyBaseProviderType, schemas.Anthropic)
-		ctx.SetValue(schemas.BifrostContextKeyPreserveMidConvSystem, false)
-
-		result, err := ToAnthropicChatRequest(ctx, makeRequest())
-		if err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
-		if result.System == nil || !strings.Contains(strings.Join(textBlocks(result.System), "\n"), "Later instruction.") {
-			t.Fatalf("later instruction was not hoisted with the option disabled: %+v", result.System)
-		}
-	})
 }
 
 // TestToBifrostChatCompletionStream_NoArgToolFlushesEmptyObject covers the

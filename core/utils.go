@@ -362,7 +362,6 @@ func clearCtxForFallback(ctx *schemas.BifrostContext) {
 	ctx.ClearValue(schemas.BifrostContextKeyStreamEndIndicator)
 	ctx.ClearValue(schemas.BifrostContextKeyConnectionClosed)
 	ctx.ClearValue(schemas.BifrostContextKeySupportsAssistantPrefill)
-	ctx.ClearValue(schemas.BifrostContextKeyPreserveMidConvSystem)
 }
 
 // ClearContextForInternalRequest clears context state that is specific to the

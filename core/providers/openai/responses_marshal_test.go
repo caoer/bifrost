@@ -28,9 +28,8 @@ func TestToOpenAIResponsesRequest_CustomProviderPreservesMidConversationSystemOr
 		}
 	}
 
-	t.Run("enabled converts only later system roles", func(t *testing.T) {
+	t.Run("converts only later system roles", func(t *testing.T) {
 		ctx := schemas.NewBifrostContext(nil, time.Time{})
-		ctx.SetValue(schemas.BifrostContextKeyPreserveMidConvSystem, true)
 		result := ToOpenAIResponsesRequest(ctx, makeRequest())
 		roles := make([]schemas.ResponsesMessageRoleType, len(result.Input.OpenAIResponsesRequestInputArray))
 		for i, msg := range result.Input.OpenAIResponsesRequestInputArray {
@@ -45,12 +44,6 @@ func TestToOpenAIResponsesRequest_CustomProviderPreservesMidConversationSystemOr
 		}, roles)
 	})
 
-	t.Run("disabled keeps legacy system role", func(t *testing.T) {
-		ctx := schemas.NewBifrostContext(nil, time.Time{})
-		ctx.SetValue(schemas.BifrostContextKeyPreserveMidConvSystem, false)
-		result := ToOpenAIResponsesRequest(ctx, makeRequest())
-		require.Equal(t, schemas.ResponsesInputMessageRoleSystem, *result.Input.OpenAIResponsesRequestInputArray[3].Role)
-	})
 }
 
 func TestOpenAIResponsesRequest_MarshalJSON_ReasoningMaxTokensAbsent(t *testing.T) {

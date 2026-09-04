@@ -4,7 +4,6 @@ export function getApiStructureFormDefaults(config?: CustomProviderConfig) {
 	return {
 		base_provider_type: config?.base_provider_type ?? "openai",
 		is_key_less: config?.is_key_less ?? false,
-		preserve_mid_conversation_system_messages: config?.preserve_mid_conversation_system_messages ?? false,
 		allowed_requests: {
 			...config?.allowed_requests,
 			text_completion: config?.allowed_requests?.text_completion ?? true,

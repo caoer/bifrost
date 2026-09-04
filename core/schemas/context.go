@@ -41,7 +41,6 @@ var reservedKeys = map[BifrostContextKey]struct{}{
 	BifrostContextKeyStreamOverhead:          {},
 	BifrostContextKeyRoutingInfo:             {},
 	BifrostContextKeyMCPInboundBearer:        {},
-	BifrostContextKeyPreserveMidConvSystem:   {},
 }
 
 // isReservedKey reports whether key is a reserved context key whose writes are
@@ -515,13 +514,6 @@ func (bc *BifrostContext) setReservedValue(key, value any) {
 // post-hook. Bifrost-internal (set by core - DO NOT SET THIS MANUALLY).
 func (bc *BifrostContext) SetRoutingInfoSnapshot(ri RoutingInfo) {
 	bc.setReservedValue(BifrostContextKeyRoutingInfo, ri)
-}
-
-// SetPreserveMidConversationSystemMessagesPolicy installs the selected provider
-// attempt's request-order policy without opening the restricted-write guard.
-// Bifrost-internal (set by core - DO NOT SET THIS MANUALLY).
-func (bc *BifrostContext) SetPreserveMidConversationSystemMessagesPolicy(preserve bool) {
-	bc.setReservedValue(BifrostContextKeyPreserveMidConvSystem, preserve)
 }
 
 // ClearValue clears a value from the internal userValues map.

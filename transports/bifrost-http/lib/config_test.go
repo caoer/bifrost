@@ -4032,40 +4032,6 @@ func TestGenerateProviderConfigHash(t *testing.T) {
 		t.Error("Expected different hash for configs with CustomProviderConfig")
 	}
 
-	defaultPolicy := configstore.ProviderConfig{
-		CustomProviderConfig: &schemas.CustomProviderConfig{BaseProviderType: schemas.Anthropic},
-	}
-	explicitFalsePolicy := configstore.ProviderConfig{
-		CustomProviderConfig: &schemas.CustomProviderConfig{
-			BaseProviderType:                      schemas.Anthropic,
-			PreserveMidConversationSystemMessages: false,
-		},
-	}
-	enabledPolicy := configstore.ProviderConfig{
-		CustomProviderConfig: &schemas.CustomProviderConfig{
-			BaseProviderType:                      schemas.Anthropic,
-			PreserveMidConversationSystemMessages: true,
-		},
-	}
-	defaultHash, err := defaultPolicy.GenerateConfigHash("custom-anthropic")
-	if err != nil {
-		t.Fatalf("failed to hash omitted preservation policy: %v", err)
-	}
-	falseHash, err := explicitFalsePolicy.GenerateConfigHash("custom-anthropic")
-	if err != nil {
-		t.Fatalf("failed to hash false preservation policy: %v", err)
-	}
-	enabledHash, err := enabledPolicy.GenerateConfigHash("custom-anthropic")
-	if err != nil {
-		t.Fatalf("failed to hash enabled preservation policy: %v", err)
-	}
-	if defaultHash != falseHash {
-		t.Error("omitted and explicit false preservation policies must hash identically")
-	}
-	if enabledHash == defaultHash {
-		t.Error("enabling the preservation policy must change the provider config hash")
-	}
-
 	t.Log("✓ ProviderConfig hash generation works correctly for all fields")
 }
 
@@ -16669,9 +16635,8 @@ func TestGenerateProviderHash_RuntimeVsMigrationParity(t *testing.T) {
 	// Test case 4: CustomProviderConfig
 	t.Run("CustomProviderConfig_GORMRoundTrip", func(t *testing.T) {
 		customConfig := &schemas.CustomProviderConfig{
-			IsKeyLess:                             true,
-			BaseProviderType:                      schemas.OpenAI,
-			PreserveMidConversationSystemMessages: true,
+			IsKeyLess:        true,
+			BaseProviderType: schemas.OpenAI,
 		}
 
 		providerToSave := tables.TableProvider{
@@ -16697,9 +16662,6 @@ func TestGenerateProviderHash_RuntimeVsMigrationParity(t *testing.T) {
 		}
 		hashAfterLoad, _ := providerConfigFromDB.GenerateConfigHash("custom")
 
-		if providerFromDB.CustomProviderConfig == nil || !providerFromDB.CustomProviderConfig.PreserveMidConversationSystemMessages {
-			t.Fatal("preservation policy was not retained by the CustomProviderConfig JSON round trip")
-		}
 		if hashBeforeSave != hashAfterLoad {
 			t.Errorf("Hash mismatch for CustomProviderConfig\nBefore save: %s\nAfter load:  %s",
 				hashBeforeSave, hashAfterLoad)
@@ -20272,37 +20234,6 @@ func TestLoadConfig_GovernanceAuthConfig_PersistsFromFirstImport(t *testing.T) {
 // =============================================================================
 // AddProvider Tests
 // =============================================================================
-
-func TestValidateCustomProvider_PreserveMidConversationSystemMessages(t *testing.T) {
-	tests := []struct {
-		name      string
-		base      schemas.ModelProvider
-		preserve  bool
-		wantError bool
-	}{
-		{name: "OpenAI enabled", base: schemas.OpenAI, preserve: true},
-		{name: "Anthropic enabled", base: schemas.Anthropic, preserve: true},
-		{name: "Bedrock disabled", base: schemas.Bedrock, preserve: false},
-		{name: "Bedrock enabled", base: schemas.Bedrock, preserve: true, wantError: true},
-		{name: "Gemini enabled", base: schemas.Gemini, preserve: true, wantError: true},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			err := ValidateCustomProvider(configstore.ProviderConfig{
-				CustomProviderConfig: &schemas.CustomProviderConfig{
-					BaseProviderType:                      tt.base,
-					PreserveMidConversationSystemMessages: tt.preserve,
-				},
-			}, "custom-provider")
-			if tt.wantError {
-				require.ErrorContains(t, err, "preserve_mid_conversation_system_messages requires base_provider_type openai or anthropic")
-				return
-			}
-			require.NoError(t, err)
-		})
-	}
-}
 
 // mockConfigStoreAddProvider is a ConfigStore mock that allows controlling AddProvider behavior.
 type mockConfigStoreAddProvider struct {

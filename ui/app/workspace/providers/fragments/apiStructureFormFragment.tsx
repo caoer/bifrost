@@ -52,9 +52,6 @@ export function ApiStructureFormFragment({ provider }: Props) {
 				custom_provider_config: {
 					base_provider_type: data.base_provider_type as unknown as BaseProvider,
 					is_key_less: data.is_key_less ?? false,
-					preserve_mid_conversation_system_messages:
-						(data.base_provider_type === "openai" || data.base_provider_type === "anthropic") &&
-						(data.preserve_mid_conversation_system_messages ?? false),
 					allowed_requests: data.allowed_requests,
 					request_path_overrides: cleanPathOverrides(data.request_path_overrides),
 				},
@@ -74,7 +71,6 @@ export function ApiStructureFormFragment({ provider }: Props) {
 
 	const baseProviderType = form.watch("base_provider_type");
 	const isKeyLessDisabled = useMemo(() => baseProviderType === "bedrock", [baseProviderType]);
-	const canPreserveMidConversationSystemMessages = baseProviderType === "openai" || baseProviderType === "anthropic";
 
 	return (
 		<Form {...form}>
@@ -123,34 +119,6 @@ export function ApiStructureFormFragment({ provider }: Props) {
 											id="custom-provider-is-keyless"
 											size="md"
 											checked={field.value}
-											onCheckedChange={field.onChange}
-											disabled={!hasUpdateProviderAccess}
-										/>
-									</div>
-								</FormItem>
-							)}
-						/>
-					)}
-					{canPreserveMidConversationSystemMessages && (
-						<FormField
-							control={form.control}
-							name="preserve_mid_conversation_system_messages"
-							render={({ field }) => (
-								<FormItem>
-									<div className="flex items-center justify-between space-x-2 rounded-lg border p-3">
-										<div className="space-y-0.5">
-											<label htmlFor="preserve-mid-conversation-system-messages" className="text-sm font-medium">
-												Preserve Later System Messages
-											</label>
-											<p className="text-muted-foreground text-sm">
-												Keep later instructions at their chronological position for prompt caching
-											</p>
-										</div>
-										<Switch
-											id="preserve-mid-conversation-system-messages"
-											data-testid="preserve-mid-conversation-system-messages"
-											size="md"
-											checked={field.value ?? false}
 											onCheckedChange={field.onChange}
 											disabled={!hasUpdateProviderAccess}
 										/>

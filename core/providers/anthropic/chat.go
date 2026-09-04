@@ -788,12 +788,10 @@ func ToAnthropicChatRequest(ctx *schemas.BifrostContext, bifrostReq *schemas.Bif
 	seenConversation := false
 	midConvSystemSupported := caps.SupportsMidConversationSystem(
 		DefaultSupportsMidConversationSystem(caps.Provider(), caps.Model()))
-	// See the same gate in ConvertBifrostMessagesToAnthropicMessages: when the native
-	// role:"system" form isn't available, inline as a user turn instead of hoisting into the
-	// top-level system block, which would invalidate the cached prefix behind it. Native
-	// Anthropic-family models take this path automatically; compatible custom Anthropic
-	// providers can opt in through their per-attempt configuration.
-	inlineMidConvSystem := schemas.ShouldPreserveMidConversationSystemMessages(ctx, capModel)
+	// See the same rule in ConvertBifrostMessagesToAnthropicMessages: when the native
+	// role:"system" form isn't available, a mid-conversation system message is inlined as
+	// a user turn, never hoisted into the top-level system block — that changes the prompt
+	// at its top on every turn and invalidates the provider's cached prefix behind it.
 
 	i := 0
 	for i < len(messages) {
@@ -864,7 +862,7 @@ func ToAnthropicChatRequest(ctx *schemas.BifrostContext, bifrostReq *schemas.Bif
 				// rejects). Inline in place so the cache anchor stays inside `messages`
 				// rather than collapsing the cached prefix from the top-level system block.
 				var inlined *AnthropicMessage
-				if seenConversation && inlineMidConvSystem {
+				if seenConversation {
 					inlined = inlineMidConversationSystem(&newContent)
 				}
 				if inlined != nil {

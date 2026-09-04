@@ -35,13 +35,7 @@ func ToOpenAIChatRequest(ctx *schemas.BifrostContext, bifrostReq *schemas.Bifros
 		Messages: ConvertBifrostMessagesToOpenAIMessages(bifrostReq.Input),
 		Provider: bifrostReq.Provider,
 	}
-	preserveMidConversationSystemMessages := false
-	if ctx != nil {
-		preserveMidConversationSystemMessages, _ = ctx.Value(schemas.BifrostContextKeyPreserveMidConvSystem).(bool)
-	}
-	if preserveMidConversationSystemMessages {
-		relabelMidConversationSystemMessages(openaiReq.Messages)
-	}
+	relabelMidConversationSystemMessages(openaiReq.Messages)
 
 	// Canonical model for capability gating only; wire model (openaiReq.Model) is untouched.
 	capModel := schemas.ResolveCanonicalModel(ctx, bifrostReq.Model)

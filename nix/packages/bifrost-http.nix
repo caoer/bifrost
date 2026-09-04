@@ -46,7 +46,7 @@ buildGoModule {
   # or plugins/: the local replaces above vendor those modules' packages —
   # //go:embed files included — into the fixed-output vendor tree. The build
   # log prints the new value ("got: sha256-…").
-  vendorHash = "sha256-5yyhlZ7eB/t28SCNLsXYnyJ+4O+y1wM8Nr1Uunv6SZs=";
+  vendorHash = "sha256-5nIf79BrCF8eIDzNc6o+nkNKqCJAceSdEvAaTGV6myk=";
 
   doCheck = false;
 
