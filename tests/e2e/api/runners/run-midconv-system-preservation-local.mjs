@@ -152,7 +152,17 @@ const chatMessages = [
   { role: "user", content: "continue" },
 ];
 
-const responsesInput = chatMessages.map((message) => ({ type: "message", ...message }));
+// The Responses wire types its text blocks `input_text`; `text` is the Chat spelling.
+// Reusing the Chat fixture verbatim sent unrecognized blocks, which convert to nothing,
+// so the mid-conversation system message was dropped before the preservation gate ever
+// saw it — the assertion then failed against the converter for a defect in its input.
+const responsesInput = chatMessages.map((message) => ({
+  type: "message",
+  ...message,
+  content: Array.isArray(message.content)
+    ? message.content.map((block) => (block.type === "text" ? { ...block, type: "input_text" } : block))
+    : message.content,
+}));
 
 function requireCaptured(path, index = 0) {
   const body = captured.get(path)?.[index];
