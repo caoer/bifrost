@@ -1,6 +1,7 @@
 package anthropic
 
 import (
+	"strings"
 	"testing"
 	"time"
 
@@ -9,6 +10,50 @@ import (
 
 // makeResponsesTextFormat returns a minimal json_schema text config for the
 // Responses API structured-output request path.
+func TestToAnthropicResponsesRequest_CustomProviderPreservesMidConversationSystemOrder(t *testing.T) {
+	role := func(value schemas.ResponsesMessageRoleType) *schemas.ResponsesMessageRoleType { return &value }
+	makeRequest := func() *schemas.BifrostResponsesRequest {
+		return &schemas.BifrostResponsesRequest{
+			Provider: "bigmodel",
+			Model:    "glm-5.3-flash",
+			Input: []schemas.ResponsesMessage{
+				{Role: role(schemas.ResponsesInputMessageRoleSystem), Content: &schemas.ResponsesMessageContent{ContentStr: schemas.Ptr("Initial.")}},
+				{Role: role(schemas.ResponsesInputMessageRoleUser), Content: &schemas.ResponsesMessageContent{ContentStr: schemas.Ptr("Hello")}},
+				{Role: role(schemas.ResponsesInputMessageRoleAssistant), Content: &schemas.ResponsesMessageContent{ContentStr: schemas.Ptr("Hi!")}},
+				{Role: role(schemas.ResponsesInputMessageRoleDeveloper), Content: &schemas.ResponsesMessageContent{ContentStr: schemas.Ptr("Later instruction.")}},
+				{Role: role(schemas.ResponsesInputMessageRoleUser), Content: &schemas.ResponsesMessageContent{ContentStr: schemas.Ptr("Continue")}},
+			},
+			Params: &schemas.ResponsesParameters{MaxOutputTokens: schemas.Ptr(1024)},
+		}
+	}
+
+	t.Run("enabled inlines later instruction in place", func(t *testing.T) {
+		ctx := schemas.NewBifrostContext(nil, time.Time{})
+		ctx.SetValue(schemas.BifrostContextKeyBaseProviderType, schemas.Anthropic)
+		ctx.SetValue(schemas.BifrostContextKeyPreserveMidConvSystem, true)
+
+		result, err := ToAnthropicResponsesRequest(ctx, makeRequest())
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		assertInlinedReminder(t, result, "Later instruction.")
+	})
+
+	t.Run("disabled keeps legacy hoisting", func(t *testing.T) {
+		ctx := schemas.NewBifrostContext(nil, time.Time{})
+		ctx.SetValue(schemas.BifrostContextKeyBaseProviderType, schemas.Anthropic)
+		ctx.SetValue(schemas.BifrostContextKeyPreserveMidConvSystem, false)
+
+		result, err := ToAnthropicResponsesRequest(ctx, makeRequest())
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if result.System == nil || !strings.Contains(strings.Join(textBlocks(result.System), "\n"), "Later instruction.") {
+			t.Fatalf("later instruction was not hoisted with the option disabled: %+v", result.System)
+		}
+	})
+}
+
 func makeResponsesTextFormat(schemaName string) *schemas.ResponsesTextConfig {
 	properties := map[string]any{
 		"color":  map[string]interface{}{"type": "string"},

@@ -1817,6 +1817,67 @@ func TestToAnthropicChatRequest_MidConversationSystem_NotOnOpus47(t *testing.T) 
 	assertInlinedReminder(t, result, "New instruction.")
 }
 
+func TestToAnthropicChatRequest_CustomProviderPreservesMidConversationSystemOrder(t *testing.T) {
+	makeRequest := func() *schemas.BifrostChatRequest {
+		return &schemas.BifrostChatRequest{
+			Provider: "bigmodel",
+			Model:    "glm-5.3-flash",
+			Input: []schemas.ChatMessage{
+				{Role: schemas.ChatMessageRoleSystem, Content: &schemas.ChatMessageContent{ContentStr: schemas.Ptr("Initial.")}},
+				{Role: schemas.ChatMessageRoleUser, Content: &schemas.ChatMessageContent{ContentStr: schemas.Ptr("Hello")}},
+				{Role: schemas.ChatMessageRoleAssistant, Content: &schemas.ChatMessageContent{ContentStr: schemas.Ptr("Hi!")}},
+				{Role: schemas.ChatMessageRoleDeveloper, Content: &schemas.ChatMessageContent{ContentBlocks: []schemas.ChatContentBlock{
+					{Type: schemas.ChatContentBlockTypeText, Text: schemas.Ptr("Later instruction part one."), CacheControl: &schemas.CacheControl{Type: schemas.CacheControlTypeEphemeral}},
+					{Type: schemas.ChatContentBlockTypeText, Text: schemas.Ptr("Later instruction."), CacheControl: &schemas.CacheControl{Type: schemas.CacheControlTypeEphemeral}},
+				}}},
+				{Role: schemas.ChatMessageRoleUser, Content: &schemas.ChatMessageContent{ContentStr: schemas.Ptr("Continue")}},
+			},
+			Params: &schemas.ChatParameters{MaxCompletionTokens: schemas.Ptr(1024)},
+		}
+	}
+
+	t.Run("enabled inlines later instruction in place", func(t *testing.T) {
+		ctx, cancel := schemas.NewBifrostContextWithCancel(context.Background())
+		defer cancel()
+		ctx.SetValue(schemas.BifrostContextKeyBaseProviderType, schemas.Anthropic)
+		ctx.SetValue(schemas.BifrostContextKeyPreserveMidConvSystem, true)
+
+		result, err := ToAnthropicChatRequest(ctx, makeRequest())
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		assertInlinedReminder(t, result, "Later instruction.")
+		for _, message := range result.Messages {
+			if message.Role != AnthropicMessageRoleUser || len(message.Content.ContentBlocks) != 2 {
+				continue
+			}
+			if message.Content.ContentBlocks[0].CacheControl != nil {
+				t.Fatal("only the last inlined content block may retain cache_control")
+			}
+			if message.Content.ContentBlocks[1].CacheControl == nil {
+				t.Fatal("last inlined content block lost cache_control")
+			}
+			return
+		}
+		t.Fatal("did not find the two-block inlined reminder")
+	})
+
+	t.Run("disabled keeps legacy hoisting", func(t *testing.T) {
+		ctx, cancel := schemas.NewBifrostContextWithCancel(context.Background())
+		defer cancel()
+		ctx.SetValue(schemas.BifrostContextKeyBaseProviderType, schemas.Anthropic)
+		ctx.SetValue(schemas.BifrostContextKeyPreserveMidConvSystem, false)
+
+		result, err := ToAnthropicChatRequest(ctx, makeRequest())
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if result.System == nil || !strings.Contains(strings.Join(textBlocks(result.System), "\n"), "Later instruction.") {
+			t.Fatalf("later instruction was not hoisted with the option disabled: %+v", result.System)
+		}
+	})
+}
+
 // TestToBifrostChatCompletionStream_NoArgToolFlushesEmptyObject covers the
 // "no-arg tool" case (e.g. tools whose Go input type is `struct{}` and whose
 // JSON schema is `{}`). Anthropic emits content_block_start followed

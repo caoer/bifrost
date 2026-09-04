@@ -4,10 +4,54 @@ import (
 	"encoding/json"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/bytedance/sonic"
 	"github.com/maximhq/bifrost/core/schemas"
+	"github.com/stretchr/testify/require"
 )
+
+func TestToOpenAIResponsesRequest_CustomProviderPreservesMidConversationSystemOrder(t *testing.T) {
+	role := func(value schemas.ResponsesMessageRoleType) *schemas.ResponsesMessageRoleType { return &value }
+	makeRequest := func() *schemas.BifrostResponsesRequest {
+		return &schemas.BifrostResponsesRequest{
+			Provider: "openai-compatible",
+			Model:    "gpt-compatible",
+			Input: []schemas.ResponsesMessage{
+				{Role: role(schemas.ResponsesInputMessageRoleSystem), Content: &schemas.ResponsesMessageContent{ContentStr: schemas.Ptr("Initial.")}},
+				{Role: role(schemas.ResponsesInputMessageRoleUser), Content: &schemas.ResponsesMessageContent{ContentStr: schemas.Ptr("Hello")}},
+				{Role: role(schemas.ResponsesInputMessageRoleAssistant), Content: &schemas.ResponsesMessageContent{ContentStr: schemas.Ptr("Hi!")}},
+				{Role: role(schemas.ResponsesInputMessageRoleSystem), Content: &schemas.ResponsesMessageContent{ContentStr: schemas.Ptr("Later instruction.")}},
+				{Role: role(schemas.ResponsesInputMessageRoleUser), Content: &schemas.ResponsesMessageContent{ContentStr: schemas.Ptr("Continue")}},
+			},
+			Params: &schemas.ResponsesParameters{},
+		}
+	}
+
+	t.Run("enabled converts only later system roles", func(t *testing.T) {
+		ctx := schemas.NewBifrostContext(nil, time.Time{})
+		ctx.SetValue(schemas.BifrostContextKeyPreserveMidConvSystem, true)
+		result := ToOpenAIResponsesRequest(ctx, makeRequest())
+		roles := make([]schemas.ResponsesMessageRoleType, len(result.Input.OpenAIResponsesRequestInputArray))
+		for i, msg := range result.Input.OpenAIResponsesRequestInputArray {
+			roles[i] = *msg.Role
+		}
+		require.Equal(t, []schemas.ResponsesMessageRoleType{
+			schemas.ResponsesInputMessageRoleSystem,
+			schemas.ResponsesInputMessageRoleUser,
+			schemas.ResponsesInputMessageRoleAssistant,
+			schemas.ResponsesInputMessageRoleDeveloper,
+			schemas.ResponsesInputMessageRoleUser,
+		}, roles)
+	})
+
+	t.Run("disabled keeps legacy system role", func(t *testing.T) {
+		ctx := schemas.NewBifrostContext(nil, time.Time{})
+		ctx.SetValue(schemas.BifrostContextKeyPreserveMidConvSystem, false)
+		result := ToOpenAIResponsesRequest(ctx, makeRequest())
+		require.Equal(t, schemas.ResponsesInputMessageRoleSystem, *result.Input.OpenAIResponsesRequestInputArray[3].Role)
+	})
+}
 
 func TestOpenAIResponsesRequest_MarshalJSON_ReasoningMaxTokensAbsent(t *testing.T) {
 	tests := []struct {

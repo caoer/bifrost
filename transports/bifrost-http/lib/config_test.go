@@ -4032,6 +4032,40 @@ func TestGenerateProviderConfigHash(t *testing.T) {
 		t.Error("Expected different hash for configs with CustomProviderConfig")
 	}
 
+	defaultPolicy := configstore.ProviderConfig{
+		CustomProviderConfig: &schemas.CustomProviderConfig{BaseProviderType: schemas.Anthropic},
+	}
+	explicitFalsePolicy := configstore.ProviderConfig{
+		CustomProviderConfig: &schemas.CustomProviderConfig{
+			BaseProviderType:                      schemas.Anthropic,
+			PreserveMidConversationSystemMessages: false,
+		},
+	}
+	enabledPolicy := configstore.ProviderConfig{
+		CustomProviderConfig: &schemas.CustomProviderConfig{
+			BaseProviderType:                      schemas.Anthropic,
+			PreserveMidConversationSystemMessages: true,
+		},
+	}
+	defaultHash, err := defaultPolicy.GenerateConfigHash("custom-anthropic")
+	if err != nil {
+		t.Fatalf("failed to hash omitted preservation policy: %v", err)
+	}
+	falseHash, err := explicitFalsePolicy.GenerateConfigHash("custom-anthropic")
+	if err != nil {
+		t.Fatalf("failed to hash false preservation policy: %v", err)
+	}
+	enabledHash, err := enabledPolicy.GenerateConfigHash("custom-anthropic")
+	if err != nil {
+		t.Fatalf("failed to hash enabled preservation policy: %v", err)
+	}
+	if defaultHash != falseHash {
+		t.Error("omitted and explicit false preservation policies must hash identically")
+	}
+	if enabledHash == defaultHash {
+		t.Error("enabling the preservation policy must change the provider config hash")
+	}
+
 	t.Log("✓ ProviderConfig hash generation works correctly for all fields")
 }
 
@@ -16635,8 +16669,9 @@ func TestGenerateProviderHash_RuntimeVsMigrationParity(t *testing.T) {
 	// Test case 4: CustomProviderConfig
 	t.Run("CustomProviderConfig_GORMRoundTrip", func(t *testing.T) {
 		customConfig := &schemas.CustomProviderConfig{
-			IsKeyLess:        true,
-			BaseProviderType: schemas.OpenAI,
+			IsKeyLess:                             true,
+			BaseProviderType:                      schemas.OpenAI,
+			PreserveMidConversationSystemMessages: true,
 		}
 
 		providerToSave := tables.TableProvider{
@@ -16662,6 +16697,9 @@ func TestGenerateProviderHash_RuntimeVsMigrationParity(t *testing.T) {
 		}
 		hashAfterLoad, _ := providerConfigFromDB.GenerateConfigHash("custom")
 
+		if providerFromDB.CustomProviderConfig == nil || !providerFromDB.CustomProviderConfig.PreserveMidConversationSystemMessages {
+			t.Fatal("preservation policy was not retained by the CustomProviderConfig JSON round trip")
+		}
 		if hashBeforeSave != hashAfterLoad {
 			t.Errorf("Hash mismatch for CustomProviderConfig\nBefore save: %s\nAfter load:  %s",
 				hashBeforeSave, hashAfterLoad)

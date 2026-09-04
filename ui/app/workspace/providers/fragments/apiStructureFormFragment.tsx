@@ -16,6 +16,7 @@ import { toast } from "sonner";
 import { z } from "zod";
 import { buildProviderUpdatePayload } from "../views/utils";
 import { AllowedRequestsFields } from "./allowedRequestsFields";
+import { getApiStructureFormDefaults } from "./apiStructureFormFragment.utils";
 
 // Type for form data
 type FormCustomProviderConfig = z.infer<typeof formCustomProviderConfigSchema>;
@@ -33,32 +34,7 @@ export function ApiStructureFormFragment({ provider }: Props) {
 	const form = useForm<FormCustomProviderConfig>({
 		resolver: zodResolver(formCustomProviderConfigSchema),
 		mode: "onChange",
-		defaultValues: {
-			base_provider_type: provider.custom_provider_config?.base_provider_type ?? "openai",
-			is_key_less: provider.custom_provider_config?.is_key_less ?? false,
-			allowed_requests: {
-				text_completion: provider.custom_provider_config?.allowed_requests?.text_completion ?? true,
-				text_completion_stream: provider.custom_provider_config?.allowed_requests?.text_completion_stream ?? true,
-				chat_completion: provider.custom_provider_config?.allowed_requests?.chat_completion ?? true,
-				chat_completion_stream: provider.custom_provider_config?.allowed_requests?.chat_completion_stream ?? true,
-				responses: provider.custom_provider_config?.allowed_requests?.responses ?? true,
-				responses_stream: provider.custom_provider_config?.allowed_requests?.responses_stream ?? true,
-				responses_retrieve: provider.custom_provider_config?.allowed_requests?.responses_retrieve ?? false,
-				responses_delete: provider.custom_provider_config?.allowed_requests?.responses_delete ?? false,
-				responses_cancel: provider.custom_provider_config?.allowed_requests?.responses_cancel ?? false,
-				responses_input_items: provider.custom_provider_config?.allowed_requests?.responses_input_items ?? false,
-				embedding: provider.custom_provider_config?.allowed_requests?.embedding ?? true,
-				speech: provider.custom_provider_config?.allowed_requests?.speech ?? true,
-				speech_stream: provider.custom_provider_config?.allowed_requests?.speech_stream ?? true,
-				transcription: provider.custom_provider_config?.allowed_requests?.transcription ?? true,
-				transcription_stream: provider.custom_provider_config?.allowed_requests?.transcription_stream ?? true,
-				count_tokens: provider.custom_provider_config?.allowed_requests?.count_tokens ?? true,
-				list_models: provider.custom_provider_config?.allowed_requests?.list_models ?? true,
-				ocr: provider.custom_provider_config?.allowed_requests?.ocr ?? true,
-				ocr_stream: provider.custom_provider_config?.allowed_requests?.ocr_stream ?? true,
-			},
-			request_path_overrides: provider.custom_provider_config?.request_path_overrides ?? undefined,
-		},
+		defaultValues: getApiStructureFormDefaults(provider.custom_provider_config),
 	});
 
 	useEffect(() => {
@@ -66,7 +42,7 @@ export function ApiStructureFormFragment({ provider }: Props) {
 	}, [form.formState.isDirty]);
 
 	useEffect(() => {
-		form.reset(provider.custom_provider_config);
+		form.reset(getApiStructureFormDefaults(provider.custom_provider_config));
 	}, [form, provider.name, provider.custom_provider_config]);
 
 	const onSubmit = (data: FormCustomProviderConfig) => {
@@ -76,6 +52,9 @@ export function ApiStructureFormFragment({ provider }: Props) {
 				custom_provider_config: {
 					base_provider_type: data.base_provider_type as unknown as BaseProvider,
 					is_key_less: data.is_key_less ?? false,
+					preserve_mid_conversation_system_messages:
+						(data.base_provider_type === "openai" || data.base_provider_type === "anthropic") &&
+						(data.preserve_mid_conversation_system_messages ?? false),
 					allowed_requests: data.allowed_requests,
 					request_path_overrides: cleanPathOverrides(data.request_path_overrides),
 				},
@@ -93,10 +72,9 @@ export function ApiStructureFormFragment({ provider }: Props) {
 			});
 	};
 
-	const isKeyLessDisabled = useMemo(
-		() => provider.custom_provider_config?.base_provider_type === "bedrock",
-		[provider.custom_provider_config?.base_provider_type],
-	);
+	const baseProviderType = form.watch("base_provider_type");
+	const isKeyLessDisabled = useMemo(() => baseProviderType === "bedrock", [baseProviderType]);
+	const canPreserveMidConversationSystemMessages = baseProviderType === "openai" || baseProviderType === "anthropic";
 
 	return (
 		<Form {...form}>
@@ -136,15 +114,43 @@ export function ApiStructureFormFragment({ provider }: Props) {
 								<FormItem>
 									<div className="flex items-center justify-between space-x-2 rounded-lg border p-3">
 										<div className="space-y-0.5">
-											<label htmlFor="drop-excess-requests" className="text-sm font-medium">
+											<label htmlFor="custom-provider-is-keyless" className="text-sm font-medium">
 												Is Keyless?
 											</label>
 											<p className="text-muted-foreground text-sm">Whether the custom provider requires a key</p>
 										</div>
 										<Switch
-											id="drop-excess-requests"
+											id="custom-provider-is-keyless"
 											size="md"
 											checked={field.value}
+											onCheckedChange={field.onChange}
+											disabled={!hasUpdateProviderAccess}
+										/>
+									</div>
+								</FormItem>
+							)}
+						/>
+					)}
+					{canPreserveMidConversationSystemMessages && (
+						<FormField
+							control={form.control}
+							name="preserve_mid_conversation_system_messages"
+							render={({ field }) => (
+								<FormItem>
+									<div className="flex items-center justify-between space-x-2 rounded-lg border p-3">
+										<div className="space-y-0.5">
+											<label htmlFor="preserve-mid-conversation-system-messages" className="text-sm font-medium">
+												Preserve Later System Messages
+											</label>
+											<p className="text-muted-foreground text-sm">
+												Keep later instructions at their chronological position for prompt caching
+											</p>
+										</div>
+										<Switch
+											id="preserve-mid-conversation-system-messages"
+											data-testid="preserve-mid-conversation-system-messages"
+											size="md"
+											checked={field.value ?? false}
 											onCheckedChange={field.onChange}
 											disabled={!hasUpdateProviderAccess}
 										/>

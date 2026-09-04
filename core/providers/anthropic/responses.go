@@ -5031,11 +5031,10 @@ func ConvertBifrostMessagesToAnthropicMessages(ctx *schemas.BifrostContext, bifr
 		DefaultSupportsMidConversationSystem(caps.Provider(), caps.Model()))
 	// When the native role:"system" form isn't available, inline the reminder as a user turn
 	// rather than hoisting it into the top-level system block — hoisting preserves the
-	// breakpoint but invalidates the cached prefix behind it, costing roughly half the prompt on
-	// a warm conversation. Gated on the Anthropic model family because these call sites also
-	// serve DeepSeek/Fireworks/SGL over the Anthropic wire shape, and the <system-reminder>
-	// envelope is a Claude convention those models never asked for; they keep hoisting.
-	inlineMidConvSystem := isRequestMessage && schemas.IsAnthropicModelFamily(ctx, caps.Model())
+	// breakpoint but invalidates the cached prefix behind it. Native Anthropic-family models
+	// take this path automatically; compatible custom Anthropic providers can opt in through
+	// their per-attempt configuration.
+	inlineMidConvSystem := isRequestMessage && schemas.ShouldPreserveMidConversationSystemMessages(ctx, caps.Model())
 
 	var anthropicMessages []AnthropicMessage
 	var systemContent *AnthropicContent

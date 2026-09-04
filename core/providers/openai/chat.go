@@ -35,6 +35,13 @@ func ToOpenAIChatRequest(ctx *schemas.BifrostContext, bifrostReq *schemas.Bifros
 		Messages: ConvertBifrostMessagesToOpenAIMessages(bifrostReq.Input),
 		Provider: bifrostReq.Provider,
 	}
+	preserveMidConversationSystemMessages := false
+	if ctx != nil {
+		preserveMidConversationSystemMessages, _ = ctx.Value(schemas.BifrostContextKeyPreserveMidConvSystem).(bool)
+	}
+	if preserveMidConversationSystemMessages {
+		relabelMidConversationSystemMessages(openaiReq.Messages)
+	}
 
 	// Canonical model for capability gating only; wire model (openaiReq.Model) is untouched.
 	capModel := schemas.ResolveCanonicalModel(ctx, bifrostReq.Model)
@@ -154,6 +161,23 @@ func ToOpenAIChatRequest(ctx *schemas.BifrostContext, bifrostReq *schemas.Bifros
 		}
 		openaiReq.filterOpenAISpecificParameters(caps)
 		return openaiReq
+	}
+}
+
+// relabelMidConversationSystemMessages preserves the leading system run and
+// uses OpenAI's developer role for later system messages.
+func relabelMidConversationSystemMessages(messages []OpenAIMessage) {
+	seenConversation := false
+	for i := range messages {
+		if !seenConversation {
+			if messages[i].Role != schemas.ChatMessageRoleSystem {
+				seenConversation = true
+			}
+			continue
+		}
+		if messages[i].Role == schemas.ChatMessageRoleSystem {
+			messages[i].Role = schemas.ChatMessageRoleDeveloper
+		}
 	}
 }
 

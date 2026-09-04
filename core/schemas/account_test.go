@@ -558,6 +558,36 @@ func TestIsOpenAIModel(t *testing.T) {
 	}
 }
 
+func TestShouldPreserveMidConversationSystemMessages(t *testing.T) {
+	aliasCtx := NewBifrostContext(nil, NoDeadline)
+	aliasCtx.SetValue(BifrostContextKeyResolvedAlias, &ResolvedAlias{
+		Key: "deployment",
+		Config: &AliasConfig{
+			ModelID:     "opaque-deployment-id",
+			ModelFamily: Ptr(ModelFamilyAnthropic),
+		},
+	})
+	tests := []struct {
+		name     string
+		ctx      *BifrostContext
+		model    string
+		preserve bool
+	}{
+		{name: "native Claude family", ctx: NewBifrostContext(nil, NoDeadline), model: "claude-opus-4-7", preserve: true},
+		{name: "aliased Claude family", ctx: aliasCtx, model: "opaque-deployment-id", preserve: true},
+		{name: "GLM opt-in", ctx: NewBifrostContextWithValue(nil, NoDeadline, BifrostContextKeyPreserveMidConvSystem, true), model: "glm-5.3-flash", preserve: true},
+		{name: "GLM default-off", ctx: NewBifrostContext(nil, NoDeadline), model: "glm-5.3-flash", preserve: false},
+		{name: "nil context", ctx: nil, model: "glm-5.3-flash", preserve: false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := ShouldPreserveMidConversationSystemMessages(tt.ctx, tt.model); got != tt.preserve {
+				t.Fatalf("ShouldPreserveMidConversationSystemMessages(%q) = %v, want %v", tt.model, got, tt.preserve)
+			}
+		})
+	}
+}
+
 func TestResolveCanonicalModelPrecedence(t *testing.T) {
 	// Helper to build a BifrostContext carrying a ResolvedAlias.
 	withAlias := func(ra *ResolvedAlias) *BifrostContext {

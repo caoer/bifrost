@@ -95,6 +95,11 @@ func ToOpenAIResponsesRequest(ctx *schemas.BifrostContext, bifrostReq *schemas.B
 	caps := schemas.ResolveModelCaps(bifrostReq.Provider, capModel)
 
 	var messages []schemas.ResponsesMessage
+	preserveMidConversationSystemMessages := false
+	if ctx != nil {
+		preserveMidConversationSystemMessages, _ = ctx.Value(schemas.BifrostContextKeyPreserveMidConvSystem).(bool)
+	}
+	seenConversation := false
 	// OpenAI models (except for gpt-oss) do not support reasoning content blocks, so we need to convert them to summaries, if there are any
 	// OpenAI also doesn't support compaction content blocks, so we need to convert them to text blocks,
 	// nor Anthropic's server-side fallback boundary markers, which are dropped outright.
@@ -103,6 +108,14 @@ func ToOpenAIResponsesRequest(ctx *schemas.BifrostContext, bifrostReq *schemas.B
 	var hoistedTools []schemas.ResponsesTool
 	keepAdditionalTools := supportsAdditionalToolsItem(bifrostReq.Provider)
 	for _, message := range bifrostReq.Input {
+		isSystem := message.Role != nil && *message.Role == schemas.ResponsesInputMessageRoleSystem
+		if !seenConversation {
+			if !isSystem {
+				seenConversation = true
+			}
+		} else if preserveMidConversationSystemMessages && isSystem {
+			message.Role = schemas.Ptr(schemas.ResponsesInputMessageRoleDeveloper)
+		}
 		if !keepAdditionalTools && message.Type != nil &&
 			*message.Type == schemas.ResponsesMessageTypeAdditionalTools {
 			hoistedTools = append(hoistedTools, hoistAdditionalTools(message)...)

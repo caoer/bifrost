@@ -482,6 +482,21 @@ func TestNewBifrostContext_WatchdogRaceWithReleasedScope(t *testing.T) {
 // as reserved. Governance uses it to bypass virtual-key provider allowlists, so a
 // restricted (plugin) write must not be able to flip it. It regressed out of
 // reservedKeys during the slice->map refactor.
+func TestReservedKey_PreserveMidConversationSystemMessagesIsProtected(t *testing.T) {
+	if !isReservedKey(BifrostContextKeyPreserveMidConvSystem) {
+		t.Fatal("BifrostContextKeyPreserveMidConvSystem must be a reserved key")
+	}
+
+	ctx := NewBifrostContext(context.Background(), NoDeadline)
+	defer ctx.Cancel()
+	ctx.SetValue(BifrostContextKeyPreserveMidConvSystem, true)
+	ctx.BlockRestrictedWrites()
+	ctx.SetValue(BifrostContextKeyPreserveMidConvSystem, false)
+	if v := ctx.Value(BifrostContextKeyPreserveMidConvSystem); v != true {
+		t.Fatalf("reserved policy overwritten under BlockRestrictedWrites: got %v, want true", v)
+	}
+}
+
 func TestReservedKey_SkipProviderCheckIsProtected(t *testing.T) {
 	if !isReservedKey(BifrostContextKeySkipProviderCheck) {
 		t.Fatal("BifrostContextKeySkipProviderCheck must be a reserved key")

@@ -790,9 +790,10 @@ func ToAnthropicChatRequest(ctx *schemas.BifrostContext, bifrostReq *schemas.Bif
 		DefaultSupportsMidConversationSystem(caps.Provider(), caps.Model()))
 	// See the same gate in ConvertBifrostMessagesToAnthropicMessages: when the native
 	// role:"system" form isn't available, inline as a user turn instead of hoisting into the
-	// top-level system block, which would invalidate the cached prefix behind it. Anthropic
-	// model family only — these call sites also serve DeepSeek/Fireworks/SGL, which keep hoisting.
-	inlineMidConvSystem := schemas.IsAnthropicModelFamily(ctx, capModel)
+	// top-level system block, which would invalidate the cached prefix behind it. Native
+	// Anthropic-family models take this path automatically; compatible custom Anthropic
+	// providers can opt in through their per-attempt configuration.
+	inlineMidConvSystem := schemas.ShouldPreserveMidConversationSystemMessages(ctx, capModel)
 
 	i := 0
 	for i < len(messages) {

@@ -6711,6 +6711,16 @@ func clearAnthropicPassthroughForNonNativeProvider(ctx *schemas.BifrostContext, 
 	if integrationType, _ := ctx.Value(schemas.BifrostContextKeyIntegrationType).(string); integrationType != "anthropic" {
 		return
 	}
+	preserveMidConversationSystemMessages, _ := ctx.Value(schemas.BifrostContextKeyPreserveMidConvSystem).(bool)
+	if preserveMidConversationSystemMessages {
+		// The request must pass through typed conversion for later system/developer
+		// messages to remain in chronological order. Response passthrough is
+		// independent and can retain the native Anthropic stream codec.
+		ctx.SetValue(schemas.BifrostContextKeyUseRawRequestBody, false)
+		ctx.ClearValue(schemas.BifrostContextKeyRawRequestBodyTextRewriter)
+		ctx.ClearValue(schemas.BifrostContextKeyURLPath)
+		return
+	}
 	if baseProvider == schemas.Anthropic {
 		return
 	}
@@ -6828,6 +6838,25 @@ func applyRawCaptureSignals(ctx *schemas.BifrostContext, config *schemas.Provide
 	ctx.SetValue(schemas.BifrostContextKeyShouldStoreRawInLogs, effectiveStore)
 }
 
+// setProviderAttemptContext installs routing policy derived from the selected
+// provider configuration. Every call writes true or false so fallback attempts
+// cannot inherit an earlier provider's opt-in.
+func setProviderAttemptContext(ctx *schemas.BifrostContext, providerKey schemas.ModelProvider, config *schemas.ProviderConfig) schemas.ModelProvider {
+	baseProvider := providerKey
+	preserveMidConversationSystemMessages := false
+	if config != nil && config.CustomProviderConfig != nil {
+		if config.CustomProviderConfig.BaseProviderType != "" {
+			baseProvider = config.CustomProviderConfig.BaseProviderType
+		}
+		preserveMidConversationSystemMessages = (baseProvider == schemas.OpenAI || baseProvider == schemas.Anthropic) &&
+			config.CustomProviderConfig.PreserveMidConversationSystemMessages
+	}
+	ctx.SetValue(schemas.BifrostContextKeyIsCustomProvider, !IsStandardProvider(baseProvider))
+	ctx.SetValue(schemas.BifrostContextKeyBaseProviderType, baseProvider)
+	ctx.SetValue(schemas.BifrostContextKeyPreserveMidConvSystem, preserveMidConversationSystemMessages)
+	return baseProvider
+}
+
 // requestWorker handles incoming requests from the queue for a specific provider.
 // It manages retries, error handling, and response processing.
 func (bifrost *Bifrost) requestWorker(provider schemas.Provider, config *schemas.ProviderConfig, pq *ProviderQueue, waitGroup *sync.WaitGroup) {
@@ -6889,14 +6918,8 @@ func (bifrost *Bifrost) requestWorker(provider schemas.Provider, config *schemas
 		var bifrostError *schemas.BifrostError
 		var err error
 
-		// Determine the base provider type for key requirement checks
-		baseProvider := provider.GetProviderKey()
-		if cfg := config.CustomProviderConfig; cfg != nil && cfg.BaseProviderType != "" {
-			baseProvider = cfg.BaseProviderType
-		}
-		req.Context.SetValue(schemas.BifrostContextKeyIsCustomProvider, !IsStandardProvider(baseProvider))
-		// Lets downstream converters resolve a custom provider key back to the built-in provider it wraps.
-		req.Context.SetValue(schemas.BifrostContextKeyBaseProviderType, baseProvider)
+		// Determine the base provider and request-order policy for this selected provider.
+		baseProvider := setProviderAttemptContext(req.Context, provider.GetProviderKey(), config)
 
 		bifrost.endCoreSpan(workerSetupSpan)
 
