@@ -4391,6 +4391,11 @@ func ToAnthropicResponsesRequest(ctx *schemas.BifrostContext, bifrostReq *schema
 					anthropicReq.Thinking.Display = schemas.Ptr("summarized")
 				}
 			}
+			// Same rule as ToAnthropicChatRequest: display is for the native
+			// provider only.
+			if anthropicReq.Thinking != nil && bifrostReq.Provider != schemas.Anthropic {
+				anthropicReq.Thinking.Display = nil
+			}
 		}
 		// Convert service tier
 		if bifrostReq.Params.ServiceTier != nil {

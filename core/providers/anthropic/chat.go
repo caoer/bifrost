@@ -764,6 +764,15 @@ func ToAnthropicChatRequest(ctx *schemas.BifrostContext, bifrostReq *schemas.Bif
 			}
 		}
 
+		// thinking.display is Anthropic's own knob (Opus 4.7+: whether thinking text
+		// comes back). Only the native provider gets it: a third-party
+		// Anthropic-compatible backend does not implement it, and Zhipu's renders
+		// the prompt unstably while the key is present — the second turn of a
+		// session re-prefills from scratch instead of reading the cached prefix.
+		if anthropicReq.Thinking != nil && bifrostReq.Provider != schemas.Anthropic {
+			anthropicReq.Thinking.Display = nil
+		}
+
 		// DeepSeek rejects a forced tool_choice while thinking is enabled (which is
 		// the default). Force thinking off when tool_choice pins a specific tool.
 		if bifrostReq.Provider == schemas.DeepSeek && anthropicReq.ToolChoice != nil &&

@@ -453,3 +453,42 @@ func TestAnthropicIngressLiftsServerSideToolOptIn(t *testing.T) {
 			bifrostReq.Params.IncludeServerSideToolInvocations)
 	}
 }
+
+func TestToAnthropicResponsesRequest_ThirdPartyBackend_DropsThinkingDisplay(t *testing.T) {
+	role := func(value schemas.ResponsesMessageRoleType) *schemas.ResponsesMessageRoleType { return &value }
+	makeRequest := func(provider schemas.ModelProvider) *schemas.BifrostResponsesRequest {
+		return &schemas.BifrostResponsesRequest{
+			Provider: provider,
+			Model:    "glm-5.3-flash",
+			Input: []schemas.ResponsesMessage{
+				{Role: role(schemas.ResponsesInputMessageRoleUser), Content: &schemas.ResponsesMessageContent{ContentStr: schemas.Ptr("think")}},
+			},
+			Params: &schemas.ResponsesParameters{
+				MaxOutputTokens: schemas.Ptr(8192),
+				Reasoning:       &schemas.ResponsesParametersReasoning{MaxTokens: schemas.Ptr(4096), Summary: schemas.Ptr("none")},
+			},
+		}
+	}
+
+	ctx := schemas.NewBifrostContext(nil, time.Time{})
+	ctx.SetValue(schemas.BifrostContextKeyBaseProviderType, schemas.Anthropic)
+
+	result, err := ToAnthropicResponsesRequest(ctx, makeRequest("bigmodel-cn"))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.Thinking == nil || result.Thinking.Type != "enabled" || result.Thinking.BudgetTokens == nil || *result.Thinking.BudgetTokens != 4096 {
+		t.Fatalf("thinking = %#v, want enabled with budget_tokens 4096", result.Thinking)
+	}
+	if result.Thinking.Display != nil {
+		t.Errorf("display = %q, want dropped for a third-party backend", *result.Thinking.Display)
+	}
+
+	native, err := ToAnthropicResponsesRequest(ctx, makeRequest(schemas.Anthropic))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if native.Thinking == nil || native.Thinking.Display == nil || *native.Thinking.Display != "omitted" {
+		t.Errorf("native provider thinking = %#v, want display 'omitted' kept", native.Thinking)
+	}
+}

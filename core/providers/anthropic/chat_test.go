@@ -2365,3 +2365,42 @@ func TestToAnthropicChatRequest_ThinkingPassthroughUnchanged(t *testing.T) {
 		t.Errorf("passthrough thinking was rewritten: got %#v, want type=enabled budget_tokens=2048", raw)
 	}
 }
+
+func TestToAnthropicChatRequest_ThirdPartyBackend_DropsThinkingDisplay(t *testing.T) {
+	display := "omitted"
+	makeRequest := func(provider schemas.ModelProvider) *schemas.BifrostChatRequest {
+		return &schemas.BifrostChatRequest{
+			Provider: provider,
+			Model:    "glm-5.3-flash",
+			Input: []schemas.ChatMessage{
+				{Role: schemas.ChatMessageRoleUser, Content: &schemas.ChatMessageContent{ContentStr: new("think")}},
+			},
+			Params: &schemas.ChatParameters{
+				MaxCompletionTokens: new(8192),
+				Reasoning:           &schemas.ChatReasoning{MaxTokens: new(4096), Display: &display},
+			},
+		}
+	}
+
+	ctx, cancel := schemas.NewBifrostContextWithCancel(context.Background())
+	defer cancel()
+
+	result, err := ToAnthropicChatRequest(ctx, makeRequest("bigmodel-cn"))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.Thinking == nil || result.Thinking.Type != "enabled" || result.Thinking.BudgetTokens == nil || *result.Thinking.BudgetTokens != 4096 {
+		t.Fatalf("thinking = %#v, want enabled with budget_tokens 4096", result.Thinking)
+	}
+	if result.Thinking.Display != nil {
+		t.Errorf("display = %q, want dropped for a third-party backend", *result.Thinking.Display)
+	}
+
+	native, err := ToAnthropicChatRequest(ctx, makeRequest(schemas.Anthropic))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if native.Thinking == nil || native.Thinking.Display == nil || *native.Thinking.Display != "omitted" {
+		t.Errorf("native provider thinking = %#v, want display 'omitted' kept", native.Thinking)
+	}
+}
