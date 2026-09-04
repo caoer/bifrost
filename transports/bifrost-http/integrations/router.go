@@ -2622,47 +2622,122 @@ func (g *GenericRouter) handleStreamingRequest(ctx *fasthttp.RequestCtx, config 
 	// That keeps goroutines and upstream tokens alive long after the SSE writer has exited.
 	//
 	// We now get a cancellable context from ConvertToBifrostContext so we can cancel the upstream stream immediately when the client disconnects.
-	var stream chan *schemas.BifrostStreamChunk
-	var bifrostErr *schemas.BifrostError
 	var requestType schemas.RequestType
+	var start streamStarter
 
 	// Handle different request types
 	if bifrostReq.TextCompletionRequest != nil {
 		requestType = schemas.TextCompletionStreamRequest
-		stream, bifrostErr = g.client.TextCompletionStreamRequest(bifrostCtx, bifrostReq.TextCompletionRequest)
+		start = func() (chan *schemas.BifrostStreamChunk, *schemas.BifrostError) {
+			return g.client.TextCompletionStreamRequest(bifrostCtx, bifrostReq.TextCompletionRequest)
+		}
 	} else if bifrostReq.ChatRequest != nil {
 		requestType = schemas.ChatCompletionStreamRequest
-		stream, bifrostErr = g.client.ChatCompletionStreamRequest(bifrostCtx, bifrostReq.ChatRequest)
+		start = func() (chan *schemas.BifrostStreamChunk, *schemas.BifrostError) {
+			return g.client.ChatCompletionStreamRequest(bifrostCtx, bifrostReq.ChatRequest)
+		}
 	} else if bifrostReq.ResponsesRequest != nil {
 		requestType = schemas.ResponsesStreamRequest
-		stream, bifrostErr = g.client.ResponsesStreamRequest(bifrostCtx, bifrostReq.ResponsesRequest)
+		start = func() (chan *schemas.BifrostStreamChunk, *schemas.BifrostError) {
+			return g.client.ResponsesStreamRequest(bifrostCtx, bifrostReq.ResponsesRequest)
+		}
 	} else if bifrostReq.ResponsesRetrieveRequest != nil {
 		requestType = schemas.ResponsesRetrieveStreamRequest
-		stream, bifrostErr = g.client.ResponsesRetrieveStreamRequest(bifrostCtx, bifrostReq.ResponsesRetrieveRequest)
+		start = func() (chan *schemas.BifrostStreamChunk, *schemas.BifrostError) {
+			return g.client.ResponsesRetrieveStreamRequest(bifrostCtx, bifrostReq.ResponsesRetrieveRequest)
+		}
 	} else if bifrostReq.SpeechRequest != nil {
 		requestType = schemas.SpeechStreamRequest
-		stream, bifrostErr = g.client.SpeechStreamRequest(bifrostCtx, bifrostReq.SpeechRequest)
+		start = func() (chan *schemas.BifrostStreamChunk, *schemas.BifrostError) {
+			return g.client.SpeechStreamRequest(bifrostCtx, bifrostReq.SpeechRequest)
+		}
 	} else if bifrostReq.TranscriptionRequest != nil {
 		requestType = schemas.TranscriptionStreamRequest
-		stream, bifrostErr = g.client.TranscriptionStreamRequest(bifrostCtx, bifrostReq.TranscriptionRequest)
+		start = func() (chan *schemas.BifrostStreamChunk, *schemas.BifrostError) {
+			return g.client.TranscriptionStreamRequest(bifrostCtx, bifrostReq.TranscriptionRequest)
+		}
 	} else if bifrostReq.ImageGenerationRequest != nil {
 		requestType = schemas.ImageGenerationStreamRequest
-		stream, bifrostErr = g.client.ImageGenerationStreamRequest(bifrostCtx, bifrostReq.ImageGenerationRequest)
+		start = func() (chan *schemas.BifrostStreamChunk, *schemas.BifrostError) {
+			return g.client.ImageGenerationStreamRequest(bifrostCtx, bifrostReq.ImageGenerationRequest)
+		}
 	} else if bifrostReq.ImageEditRequest != nil {
 		requestType = schemas.ImageEditStreamRequest
-		stream, bifrostErr = g.client.ImageEditStreamRequest(bifrostCtx, bifrostReq.ImageEditRequest)
+		start = func() (chan *schemas.BifrostStreamChunk, *schemas.BifrostError) {
+			return g.client.ImageEditStreamRequest(bifrostCtx, bifrostReq.ImageEditRequest)
+		}
+	}
+
+	// No request type matched. Return error without spawning a drain goroutine.
+	if start == nil {
+		cancel()
+		g.sendError(ctx, bifrostCtx, config.ErrorConverter, newBifrostError(nil, "streaming is not supported for this request type"))
+		return
+	}
+
+	g.streamWithEarlyCommit(ctx, bifrostCtx, config, requestType, start, cancel)
+}
+
+// streamStarter opens the upstream stream. It returns once the provider has
+// answered the request — first bytes on the wire — or failed it.
+type streamStarter func() (chan *schemas.BifrostStreamChunk, *schemas.BifrostError)
+
+// streamSetup is a streamStarter's answer.
+type streamSetup struct {
+	stream chan *schemas.BifrostStreamChunk
+	err    *schemas.BifrostError
+}
+
+// streamEarlyCommitAfter bounds how long a streaming response stays silent
+// while the upstream has not yet answered. Past it the response commits as
+// 200 text/event-stream and the SSE heartbeat keeps the client's socket fed;
+// a provider error that lands later reaches the client as an SSE error event
+// instead of an HTTP status. Node's fetch (undici) drops a response whose
+// headers take 300 s, which a large prompt on a busy model exceeds before its
+// first token; this keeps such requests alive for whatever the model answers.
+const streamEarlyCommitAfter = 60 * time.Second
+
+// streamWithEarlyCommit runs start and serves what it returns. An answer
+// within streamEarlyCommitAfter takes the same path as a synchronous call:
+// provider errors get their HTTP status, provider response headers are
+// forwarded, large-payload passthrough applies. Past that the SSE response is
+// committed and serveStream's producer waits for the answer under heartbeat;
+// provider headers and passthrough are then unavailable. Routes with no
+// StreamConfig, and Bedrock's binary framing, cannot carry a late error, so
+// they wait synchronously.
+func (g *GenericRouter) streamWithEarlyCommit(ctx *fasthttp.RequestCtx, bifrostCtx *schemas.BifrostContext, config RouteConfig, requestType schemas.RequestType, start streamStarter, cancel context.CancelFunc) {
+	setupCh := make(chan streamSetup, 1)
+	go func() {
+		stream, err := start()
+		setupCh <- streamSetup{stream: stream, err: err}
+	}()
+
+	var setup streamSetup
+	if config.StreamConfig == nil || config.Type == RouteConfigTypeBedrock {
+		setup = <-setupCh
+	} else {
+		timer := time.NewTimer(streamEarlyCommitAfter)
+		select {
+		case setup = <-setupCh:
+			timer.Stop()
+		case <-timer.C:
+			setStreamResponseHeaders(ctx, config)
+			g.serveStream(ctx, bifrostCtx, config, setupCh, cancel)
+			return
+		}
 	}
 
 	// Provider error before streaming started — return proper HTTP error status
 	// (SSE headers not yet committed, so we can still set status code + JSON body)
-	if bifrostErr != nil {
+	if setup.err != nil {
 		cancel()
-		g.sendError(ctx, bifrostCtx, config.ErrorConverter, bifrostErr)
+		g.sendError(ctx, bifrostCtx, config.ErrorConverter, setup.err)
 		return
 	}
 
-	// No request type matched — stream is nil. Return error without spawning
-	// a drain goroutine (for-range on nil channel blocks forever).
+	// No stream and no error. Return error without spawning a drain goroutine
+	// (for-range on nil channel blocks forever).
+	stream := setup.stream
 	if stream == nil {
 		cancel()
 		g.sendError(ctx, bifrostCtx, config.ErrorConverter, newBifrostError(nil, "streaming is not supported for this request type"))
@@ -2706,6 +2781,15 @@ func (g *GenericRouter) handleStreamingRequest(ctx *fasthttp.RequestCtx, config 
 	}
 
 	// SSE headers set only after successful stream setup — errors above get proper HTTP status codes
+	setStreamResponseHeaders(ctx, config)
+
+	// Handle streaming using the centralized approach
+	// Pass cancel function so it can be called when the writer exits (errors, completion, etc.)
+	g.handleStreaming(ctx, bifrostCtx, config, stream, cancel)
+}
+
+// setStreamResponseHeaders commits the response as a stream in the route's framing.
+func setStreamResponseHeaders(ctx *fasthttp.RequestCtx, config RouteConfig) {
 	if config.Type == RouteConfigTypeBedrock {
 		ctx.SetContentType("application/vnd.amazon.eventstream")
 		ctx.Response.Header.Set("x-amzn-bedrock-content-type", "application/json")
@@ -2716,14 +2800,21 @@ func (g *GenericRouter) handleStreamingRequest(ctx *fasthttp.RequestCtx, config 
 	ctx.Response.Header.Set("Cache-Control", "no-cache")
 	ctx.Response.Header.Set("Connection", "keep-alive")
 	ctx.Response.Header.Set("Access-Control-Allow-Origin", "*")
-
-	// Handle streaming using the centralized approach
-	// Pass cancel function so it can be called when the writer exits (errors, completion, etc.)
-	g.handleStreaming(ctx, bifrostCtx, config, stream, cancel)
 }
 
-// handleStreaming processes a stream of BifrostResponse objects and sends them as Server-Sent Events (SSE).
+// handleStreaming serves an already-open stream; see serveStream.
+func (g *GenericRouter) handleStreaming(ctx *fasthttp.RequestCtx, bifrostCtx *schemas.BifrostContext, config RouteConfig, streamChan chan *schemas.BifrostStreamChunk, cancel context.CancelFunc) {
+	setupCh := make(chan streamSetup, 1)
+	setupCh <- streamSetup{stream: streamChan}
+	g.serveStream(ctx, bifrostCtx, config, setupCh, cancel)
+}
+
+// serveStream processes a stream of BifrostResponse objects and sends them as Server-Sent Events (SSE).
 // It handles both successful responses and errors in the streaming format.
+//
+// The stream arrives through setupCh, which may still be pending when the response
+// is already committed (see streamWithEarlyCommit): the producer waits on it under
+// heartbeat, and a setup error is emitted as an SSE error event.
 //
 // SSE FORMAT HANDLING:
 //
@@ -2772,7 +2863,7 @@ func (g *GenericRouter) handleStreamingRequest(ctx *fasthttp.RequestCtx, config 
 // The cancel function is called ONLY when client disconnects are detected via write errors.
 // Bifrost handles cleanup internally for normal completion and errors, so we only cancel
 // upstream streams when write errors indicate the client has disconnected.
-func (g *GenericRouter) handleStreaming(ctx *fasthttp.RequestCtx, bifrostCtx *schemas.BifrostContext, config RouteConfig, streamChan chan *schemas.BifrostStreamChunk, cancel context.CancelFunc) {
+func (g *GenericRouter) serveStream(ctx *fasthttp.RequestCtx, bifrostCtx *schemas.BifrostContext, config RouteConfig, setupCh <-chan streamSetup, cancel context.CancelFunc) {
 	// Signal to tracing middleware that trace completion should be deferred
 	// The streaming callback will complete the trace after the stream ends
 	ctx.SetUserValue(schemas.BifrostContextKeyDeferTraceCompletion, true)
@@ -2924,6 +3015,26 @@ func (g *GenericRouter) handleStreaming(ctx *fasthttp.RequestCtx, bifrostCtx *sc
 		shouldSendDoneMarker := true
 		if config.Type == RouteConfigTypeAnthropic || strings.Contains(config.Path, "/responses") || strings.Contains(config.Path, "/images/generations") {
 			shouldSendDoneMarker = false
+		}
+
+		// The stream setup may still be pending (early commit); the heartbeat above
+		// keeps the client fed meanwhile. The HTTP status is already committed, so a
+		// setup failure goes out as an SSE error event, sanitized like a chunk error.
+		setup := <-setupCh
+		if setup.err != nil {
+			cancel()
+			bifrostErr := lib.SanitizeBifrostErrorForClient(setup.err)
+			if bifrostErr == nil {
+				bifrostErr = newBifrostErrorWithCode(nil, lib.ClientSafeInternalErrorMessage, fasthttp.StatusInternalServerError)
+			}
+			sendConvertedStreamError(bifrostErr)
+			return
+		}
+		streamChan := setup.stream
+		if streamChan == nil {
+			cancel()
+			sendConvertedStreamError(newBifrostError(nil, "streaming is not supported for this request type"))
+			return
 		}
 
 		// Process streaming responses
