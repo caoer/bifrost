@@ -32,6 +32,15 @@ let
     replace github.com/maximhq/bifrost/plugins/semanticcache => ../plugins/semanticcache
     replace github.com/maximhq/bifrost/plugins/telemetry => ../plugins/telemetry
     EOF
+      # The replaces above vendor core/, framework/ and plugins/ out of this
+      # tree, so every module THOSE require has to be checksummed in
+      # transports/go.sum — a dependency added under framework (chromem-go,
+      # say) is absent from transports' own sum file and `go mod download`
+      # refuses with "missing go.sum entry". A go.sum line is canonical per
+      # module@version, so the union of the local modules' sums is a superset
+      # of what transports needs and can hold no conflict.
+      cat core/go.sum framework/go.sum plugins/*/go.sum >> transports/go.sum
+      sort -u -o transports/go.sum transports/go.sum
     fi
   '';
 in
