@@ -31,14 +31,24 @@ let
     replace github.com/maximhq/bifrost/plugins/routing => ../plugins/routing
     replace github.com/maximhq/bifrost/plugins/semanticcache => ../plugins/semanticcache
     replace github.com/maximhq/bifrost/plugins/telemetry => ../plugins/telemetry
+
+    require github.com/philippgille/chromem-go v0.7.0 // indirect
     EOF
       # The replaces above vendor core/, framework/ and plugins/ out of this
-      # tree, so every module THOSE require has to be checksummed in
-      # transports/go.sum — a dependency added under framework (chromem-go,
-      # say) is absent from transports' own sum file and `go mod download`
-      # refuses with "missing go.sum entry". A go.sum line is canonical per
+      # tree, so a dependency THEY pull in becomes part of the transports
+      # build list — and transports' own go.mod/go.sum, written for the
+      # published modules, does not carry it. Two symptoms, both from the
+      # vendor step: "missing go.sum entry" (the checksum) and "updates to
+      # go.mod needed; to update it: go mod tidy" (the require). `go mod tidy`
+      # cannot be the fix — the vendor derivation has network and the build
+      # derivation does not, so a go.mod tidied in one and not the other is
+      # inconsistent vendoring.
+      #
+      # The sums are safe to take wholesale: a go.sum line is canonical per
       # module@version, so the union of the local modules' sums is a superset
-      # of what transports needs and can hold no conflict.
+      # of what transports needs and can hold no conflict. Each missing
+      # require is listed above by hand, at the version the local module pins
+      # — chromem-go arrived with framework/vectorstore.
       cat core/go.sum framework/go.sum plugins/*/go.sum >> transports/go.sum
       sort -u -o transports/go.sum transports/go.sum
     fi
@@ -55,7 +65,7 @@ buildGoModule {
   # or plugins/: the local replaces above vendor those modules' packages —
   # //go:embed files included — into the fixed-output vendor tree. The build
   # log prints the new value ("got: sha256-…").
-  vendorHash = "sha256-M65+oGY8frLV448XBNIowKHYHAztXhC4GP6zhb+H5cc=";
+  vendorHash = "sha256-oCGDrseajROPKhYhrN5FN0hUXryeUjpfAKMaJTQ2YAc=";
 
   doCheck = false;
 
