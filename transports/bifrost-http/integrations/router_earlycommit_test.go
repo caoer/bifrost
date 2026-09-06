@@ -20,7 +20,7 @@ import (
 // eventual error must reach the client as the route's SSE error frame.
 func Test_streamWithEarlyCommitCommitsSSEWhileSetupPends(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
-		router := NewGenericRouter(nil, &mockHandlerStore{}, nil, nil, bifrost.NewNoOpLogger())
+		router := NewGenericRouter(nil, &mockHandlerStore{}, nil, nil, nil, bifrost.NewNoOpLogger())
 		ctx := &fasthttp.RequestCtx{}
 		release := make(chan struct{})
 		start := func() (chan *schemas.BifrostStreamChunk, *schemas.BifrostError) {
@@ -74,7 +74,7 @@ func Test_streamWithEarlyCommitCommitsSSEWhileSetupPends(t *testing.T) {
 // status, no SSE commit.
 func Test_streamWithEarlyCommitKeepsHTTPStatusForPromptErrors(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
-		router := NewGenericRouter(nil, &mockHandlerStore{}, nil, nil, bifrost.NewNoOpLogger())
+		router := NewGenericRouter(nil, &mockHandlerStore{}, nil, nil, nil, bifrost.NewNoOpLogger())
 		ctx := &fasthttp.RequestCtx{}
 		start := func() (chan *schemas.BifrostStreamChunk, *schemas.BifrostError) {
 			return nil, newBifrostErrorWithCode(nil, "upstream gave up", fasthttp.StatusBadGateway)
