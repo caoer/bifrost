@@ -25,7 +25,7 @@ buildGoModule {
   # versions its go.mod pins, the same build the release image makes
   # (transports/Dockerfile: go mod download, GOWORK=off). The hash moves only
   # with transports/go.sum.
-  vendorHash = lib.fakeHash;
+  vendorHash = "sha256-izOyG5/oFzz34L6lHJMsKgxkXtubFNYNgE2CLvrcO1g=";
 
   doCheck = false;
 
