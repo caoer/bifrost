@@ -13,22 +13,6 @@ let
     go = pkgs.go_1_27 or pkgs.go;
   };
 
-  transportsLocalReplaces = ''
-    if [ -f transports/go.mod ]; then
-      cat >> transports/go.mod <<'EOF'
-
-    replace github.com/maximhq/bifrost/core => ../core
-    replace github.com/maximhq/bifrost/framework => ../framework
-    replace github.com/maximhq/bifrost/plugins/governance => ../plugins/governance
-    replace github.com/maximhq/bifrost/plugins/compat => ../plugins/compat
-    replace github.com/maximhq/bifrost/plugins/logging => ../plugins/logging
-    replace github.com/maximhq/bifrost/plugins/maxim => ../plugins/maxim
-    replace github.com/maximhq/bifrost/plugins/otel => ../plugins/otel
-    replace github.com/maximhq/bifrost/plugins/semanticcache => ../plugins/semanticcache
-    replace github.com/maximhq/bifrost/plugins/telemetry => ../plugins/telemetry
-    EOF
-    fi
-  '';
 in
 buildGoModule {
   pname = "bifrost-http";
@@ -37,16 +21,17 @@ buildGoModule {
 
   modRoot = "transports";
   subPackages = [ "bifrost-http" ];
-  vendorHash = "sha256-Ck1cwv/DYI9EXmp7U2ZSNXlU+Qok8BFn5bcN1Pv7Nmc=";
+  # transports builds against the core/, framework/ and plugins/ module
+  # versions its go.mod pins, the same build the release image makes
+  # (transports/Dockerfile: go mod download, GOWORK=off). The hash moves only
+  # with transports/go.sum.
+  vendorHash = lib.fakeHash;
 
   doCheck = false;
 
-  overrideModAttrs = final: prev: {
-    postPatch = (prev.postPatch or "") + transportsLocalReplaces;
-  };
-
   env = {
     CGO_ENABLED = "1";
+    GOWORK = "off";
   };
 
   nativeBuildInputs = with pkgs; [
@@ -54,8 +39,6 @@ buildGoModule {
     gcc
   ];
   buildInputs = [ pkgs.sqlite ];
-
-  postPatch = transportsLocalReplaces;
 
   preBuild = ''
     # Provide UI assets for //go:embed all:ui

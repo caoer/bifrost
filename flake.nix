@@ -59,7 +59,9 @@
         pkgs,
         system,
       }: let
-        version = "1.4.9";
+        # The gateway release this branch is built on (upstream tag
+        # transports/v2.3.2) plus the fork commit, so /api/version names both.
+        version = "v2.3.2-fleet-${self.shortRev or "dirty"}";
 
         bifrost-ui = pkgs.callPackage ./nix/packages/bifrost-ui.nix {
           src = self;
