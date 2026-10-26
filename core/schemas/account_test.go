@@ -1,6 +1,7 @@
 package schemas
 
 import (
+	"context"
 	"encoding/json"
 	"reflect"
 	"strings"
@@ -687,5 +688,19 @@ func TestModelFamilyIsValid(t *testing.T) {
 	var nilMF *ModelFamily
 	if nilMF.IsValid() {
 		t.Fatal("nil ModelFamily should be invalid")
+	}
+}
+
+// TestBuildRoutingInfoBaseProvider: an attempt on a custom provider records the
+// built-in type behind it; a built-in attempt leaves BaseProvider empty.
+func TestBuildRoutingInfoBaseProvider(t *testing.T) {
+	ctx := NewBifrostContext(context.Background(), NoDeadline)
+	ctx.SetValue(BifrostContextKeyBaseProviderType, Anthropic)
+
+	if got := BuildRoutingInfo(ctx, "dewiest_gulp", "claude-opus-4-7", Key{}).BaseProvider; got != Anthropic {
+		t.Fatalf("custom provider: BaseProvider = %q, want %q", got, Anthropic)
+	}
+	if got := BuildRoutingInfo(ctx, Anthropic, "claude-opus-4-7", Key{}).BaseProvider; got != "" {
+		t.Fatalf("built-in provider: BaseProvider = %q, want empty", got)
 	}
 }

@@ -6,6 +6,7 @@ import (
 	"strconv"
 	"strings"
 
+	bifrost "github.com/maximhq/bifrost/core"
 	"github.com/maximhq/bifrost/core/schemas"
 	configstoreTables "github.com/maximhq/bifrost/framework/configstore/tables"
 )
@@ -124,6 +125,10 @@ func (s *Store) RoutingCallCost(call schemas.BifrostRoutingCall, scopes *LookupS
 	// against ProviderUsed, so provider-scoped overrides must key on it.
 	// The embedding can use a different provider from the main request, so its
 	// provider-scoped overrides must be resolved against the embedding provider.
+	// The parent's base provider type describes the parent's provider only.
+	if lookupScopes.Provider != *call.ProviderUsed {
+		lookupScopes.BaseProvider = ""
+	}
 	lookupScopes.Provider = *call.ProviderUsed
 	// A present OutputTokens marks the call as a chat completion (the llm
 	// classifier); an embedding call never carries one. The two price on
@@ -596,8 +601,9 @@ func (s *Store) computeCostFromInput(input costInput, routingInfo schemas.Routin
 	// stay addressable.
 	if input.containerIdentifierString != "" {
 		routingInfo = schemas.RoutingInfo{
-			Provider: routingInfo.Provider,
-			Model:    input.containerIdentifierString,
+			Provider:     routingInfo.Provider,
+			BaseProvider: routingInfo.BaseProvider,
+			Model:        input.containerIdentifierString,
 		}
 	}
 
@@ -2088,20 +2094,29 @@ func (s *Store) resolvePricing(routingInfo schemas.RoutingInfo, requestType sche
 	}
 	s.logger.Debug("looking up pricing for wire model %s and provider %s of request type %s", overrideKey, provider, normalizeRequestType(requestType))
 
+	// A custom provider's own rows win; without them its traffic is priced as
+	// its base provider type would be. Overrides still match on the custom name.
+	catalogProviders := []string{catalogProvider}
+	if base := pricingBaseProvider(routingInfo, scopes); base != "" && base != catalogProvider {
+		catalogProviders = append(catalogProviders, base)
+	}
+
 	if scopes.Provider == "" {
 		scopes.Provider = provider
 	}
 
-	for _, candidate := range []string{serverSideFallbackModel, aliasModelName, aliasModelID, routingInfo.Model} {
-		if candidate == "" {
-			continue
+	for _, lookupProvider := range catalogProviders {
+		for _, candidate := range []string{serverSideFallbackModel, aliasModelName, aliasModelID, routingInfo.Model} {
+			if candidate == "" {
+				continue
+			}
+			base, exists := s.getBasePricing(candidate, lookupProvider, requestType)
+			if exists && base != nil {
+				result, _ := s.applyPricingOverrides(overrideKey, requestType, *base, scopes)
+				return &result
+			}
+			s.logger.Debug("pricing not found for %s under provider %s, trying next candidate", candidate, lookupProvider)
 		}
-		base, exists := s.getBasePricing(candidate, catalogProvider, requestType)
-		if exists && base != nil {
-			result, _ := s.applyPricingOverrides(overrideKey, requestType, *base, scopes)
-			return &result
-		}
-		s.logger.Debug("pricing not found for %s, trying next candidate", candidate)
 	}
 
 	// No base catalog entry found; still try overrides in case the user defined
@@ -2113,6 +2128,25 @@ func (s *Store) resolvePricing(routingInfo schemas.RoutingInfo, requestType sche
 	}
 	s.logger.Debug("no pricing found for wire model %s and provider %s, skipping cost calculation", overrideKey, provider)
 	return nil
+}
+
+// pricingBaseProvider returns the normalized catalog provider a custom provider
+// falls back to when it has no datasheet rows of its own: RoutingInfo.BaseProvider,
+// else scopes.BaseProvider when scopes describe this same provider (bare-usage
+// paths build a RoutingInfo from provider and model alone). Empty for built-in
+// providers, whose lookup never leaves their own rows.
+func pricingBaseProvider(routingInfo schemas.RoutingInfo, scopes LookupScopes) string {
+	if routingInfo.Provider == "" || bifrost.IsStandardProvider(routingInfo.Provider) {
+		return ""
+	}
+	base := routingInfo.BaseProvider
+	if base == "" && scopes.Provider == string(routingInfo.Provider) {
+		base = schemas.ModelProvider(scopes.BaseProvider)
+	}
+	if base == "" || base == routingInfo.Provider {
+		return ""
+	}
+	return normalizeProvider(string(base))
 }
 
 // getBasePricing looks up catalog pricing for the given model, provider, and request type.

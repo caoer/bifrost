@@ -247,6 +247,11 @@ type LookupScopes struct {
 	VirtualKeyID  string
 	SelectedKeyID string
 	Provider      string
+	// BaseProvider is the built-in provider type behind Provider when Provider
+	// is a custom provider, and empty otherwise. It prices bare-usage paths
+	// (billed usage on a failed or cancelled request) that carry no RoutingInfo,
+	// and applies only while the lookup's provider is Provider.
+	BaseProvider string
 }
 
 // LookupScopesFromContext builds a LookupScopes from a BifrostContext. Reads
@@ -266,11 +271,18 @@ func LookupScopesFromContext(ctx *schemas.BifrostContext, provider string) *Look
 	userID, _ := ctx.Value(schemas.BifrostContextKeyUserID).(string)
 	virtualKeyID, _ := ctx.Value(schemas.BifrostContextKeyGovernanceVirtualKeyID).(string)
 	selectedKeyID, _ := ctx.Value(schemas.BifrostContextKeySelectedKeyID).(string)
+	var baseProvider string
+	if provider != "" {
+		if base := schemas.ResolveBaseProvider(ctx, schemas.ModelProvider(provider)); string(base) != provider {
+			baseProvider = string(base)
+		}
+	}
 	return &LookupScopes{
 		UserID:        userID,
 		VirtualKeyID:  virtualKeyID,
 		SelectedKeyID: selectedKeyID,
 		Provider:      provider,
+		BaseProvider:  baseProvider,
 	}
 }
 

@@ -1804,6 +1804,11 @@ type RoutingInfo struct {
 	Model    string        `json:"model,omitempty"` // model name passed to this attempt's key
 	Key      string        `json:"key,omitempty"`   // KeyName of the key used
 
+	// BaseProvider is the built-in provider type behind a custom provider
+	// (CustomProviderConfig.BaseProviderType); empty when Provider is itself
+	// built-in. Pricing falls back to its datasheet rows when Provider has none.
+	BaseProvider ModelProvider `json:"base_provider,omitempty"`
+
 	// Populated only when Model matched an entry in this key's Aliases map
 	ResolvedKeyAlias *ResolvedKeyAlias `json:"resolved_key_alias,omitempty"`
 

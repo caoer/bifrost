@@ -7111,6 +7111,9 @@ func (bifrost *Bifrost) requestWorker(provider schemas.Provider, config *schemas
 			Provider: provider.GetProviderKey(),
 			Model:    originalModelRequested,
 		}
+		if baseProvider != provider.GetProviderKey() {
+			attemptRoutingInfo.BaseProvider = baseProvider
+		}
 		// lastAttemptFinalizer captures the LAST attempt's postHookSpanFinalizer for the
 		// worker-level error fallback below. Single-threaded write (assigned by the retry
 		// loop's per-attempt closure) and single-threaded read (after retries finish), so

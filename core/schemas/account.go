@@ -580,6 +580,9 @@ func BuildRoutingInfo(ctx *BifrostContext, attemptProvider ModelProvider, attemp
 		Model:    attemptModel,
 		Key:      attemptKey.Name,
 	}
+	if base := ResolveBaseProvider(ctx, attemptProvider); base != attemptProvider {
+		info.BaseProvider = base
+	}
 	if ra := GetResolvedAlias(ctx); ra != nil && ra.Config != nil {
 		rka := &ResolvedKeyAlias{
 			ModelID: ra.Config.ModelID,
